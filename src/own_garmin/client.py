@@ -98,6 +98,9 @@ class GarminClient:
 
         # 3. If resume failed, read env vars, login, and persist.
         if not resume_success:
+            from dotenv import load_dotenv
+
+            load_dotenv()
             email = os.getenv("GARMIN_EMAIL")
             password = os.getenv("GARMIN_PASSWORD")
 
