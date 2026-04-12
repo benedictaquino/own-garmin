@@ -261,20 +261,6 @@ wheels = [
 ]
 
 [[package]]
-name = "garminconnect"
-version = "0.3.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "curl-cffi" },
-    { name = "requests" },
-    { name = "ua-generator" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d2/bf/ec89102470c240fd1b0877f18f3b5039466da3e6af8f81dc537147b567ab/garminconnect-0.3.2.tar.gz", hash = "sha256:ca9d813139cb5f81cd6fc90236a225608e7e13acd7b1034170b0facfdd072d9a", size = 51111, upload-time = "2026-04-11T09:22:05.987Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/6f/286e87787d11627027c5277fac5afb606040a77af4d98bdd0dade5e5dcfa/garminconnect-0.3.2-py3-none-any.whl", hash = "sha256:d0b6f332c3262209ef3e48e9a49ccf797a70ff5a7fbd9a546a9c4e9375654106", size = 46239, upload-time = "2026-04-11T09:22:04.53Z" },
-]
-
-[[package]]
 name = "identify"
 version = "2.6.18"
 source = { registry = "https://pypi.org/simple" }
@@ -336,10 +322,11 @@ name = "own-garmin"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "curl-cffi" },
     { name = "duckdb" },
-    { name = "garminconnect" },
     { name = "polars" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "typer" },
 ]
 
@@ -352,10 +339,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "curl-cffi", specifier = ">=0.7.1" },
     { name = "duckdb", specifier = ">=1.5.1" },
-    { name = "garminconnect", specifier = ">=0.3.2" },
     { name = "polars", specifier = ">=1.39.3" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "typer", specifier = ">=0.24.1" },
 ]
 
@@ -614,15 +602,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f5/24/cb09efec5cc954f7f9b930bf8279447d24618bb6758d4f6adf2574c41780/typer-0.24.1.tar.gz", hash = "sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45", size = 118613, upload-time = "2026-02-21T16:54:40.609Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/91/48db081e7a63bb37284f9fbcefda7c44c277b18b0e13fbc36ea2335b71e6/typer-0.24.1-py3-none-any.whl", hash = "sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e", size = 56085, upload-time = "2026-02-21T16:54:41.616Z" },
-]
-
-[[package]]
-name = "ua-generator"
-version = "2.0.25"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f0/6a/1f46e28c1c11e4fa8ce871f16b42c0a118a66b69f9a827f6f2e06f8789f2/ua_generator-2.0.25.tar.gz", hash = "sha256:7587fc8cb928a82e9c382eafc6437ae6cdb142e4dec2939fbc1066e3839eba80", size = 28412, upload-time = "2026-04-12T01:36:38.411Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/ae/dc9bc1c62721ad9abfe96ce8cb61d388e3fce9647b84bdbfd83bd1fd601c/ua_generator-2.0.25-py3-none-any.whl", hash = "sha256:8e5ad06b29c9c83ccc72375952d99f5cb9cba68f277d27f1166a46ad072a7a02", size = 32504, upload-time = "2026-04-12T01:36:37.186Z" },
 ]
 
 [[package]]
