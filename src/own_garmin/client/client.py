@@ -135,8 +135,30 @@ class GarminClient:
         return self._connectapi(path)
 
     def get_activity(self, activity_id: int) -> dict:
-        """Fetch the full detail dictionary for a specific activity."""
+        """Fetch the full summary dictionary for a specific activity."""
         path = f"/activity-service/activity/{activity_id}"
+        return self._connectapi(path)
+
+    def get_activity_details(
+        self, activity_id: int, max_chart: int = 99999, max_poly: int = 99999
+    ) -> dict:
+        """
+        Fetch charts/metrics for an activity. Default to large values to get all data.
+
+        :param activity_id: Garmin activity ID.
+        :param max_chart: Max number of data points for charts (e.g., HR, pace).
+        :param max_poly: Max number of points for the GPS polyline.
+        """
+        path = f"/activity-service/activity/{activity_id}/details"
+        params = {"maxChartSize": max_chart, "maxPolylineSize": max_poly}
+        return self._connectapi(path, params=params)
+
+    def get_activity_metrics(self, activity_id: int) -> dict:
+        """
+        Fetch raw high-resolution time-series metrics (heart rate, pace, etc.).
+        This typically returns data at 1-second intervals if recorded that way.
+        """
+        path = f"/activity-service/activity/{activity_id}/metrics"
         return self._connectapi(path)
 
     # ------------------------------------------------------------------

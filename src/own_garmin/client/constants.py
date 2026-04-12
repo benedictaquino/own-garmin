@@ -76,6 +76,8 @@ USER_SETTINGS_URL = "/userprofile-service/userprofile/user-settings"
 # Activities
 ACTIVITIES_URL = "/activitylist-service/activities/search/activities"
 ACTIVITY_URL = "/activity-service/activity"
+ACTIVITY_DETAILS_URL = "/activity-service/activity/{activity_id}/details"
+ACTIVITY_METRICS_URL = "/activity-service/activity/{activity_id}/metrics"
 
 # --------------------------------------------------------------------------------------
 # HELPER FUNCTIONS
