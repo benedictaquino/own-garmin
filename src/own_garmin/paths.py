@@ -1,13 +1,10 @@
 import os
 from datetime import date
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 
 def data_root() -> str:
-    return os.environ.get("OWN_GARMIN_DATA_DIR", "./data")
+    path = os.environ.get("OWN_GARMIN_DATA_DIR", "./data")
+    return os.path.expanduser(path)
 
 
 def session_dir() -> str:
@@ -22,3 +19,7 @@ def bronze_path(category: str, day: date) -> str:
 
 def silver_path(category: str) -> str:
     return f"{data_root()}/silver/{category}"
+
+
+def silver_glob(category: str) -> str:
+    return f"{silver_path(category)}/*.parquet"

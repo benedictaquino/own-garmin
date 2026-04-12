@@ -21,6 +21,11 @@ def test_data_root_from_env(monkeypatch):
     assert paths.data_root() == "/tmp/foo"
 
 
+def test_data_root_expanduser(monkeypatch):
+    monkeypatch.setenv("OWN_GARMIN_DATA_DIR", "~/my-data")
+    assert paths.data_root() == os.path.expanduser("~/my-data")
+
+
 def test_session_dir_default():
     expected = os.path.expanduser("~/.config/own-garmin/session")
     assert paths.session_dir() == expected
@@ -58,9 +63,21 @@ def test_silver_path_default_root():
     assert result == "./data/silver/activities"
 
 
+def test_silver_glob(monkeypatch):
+    monkeypatch.setenv("OWN_GARMIN_DATA_DIR", "/tmp/foo")
+    result = paths.silver_glob("activities")
+    assert result == "/tmp/foo/silver/activities/*.parquet"
+
+
+def test_silver_glob_default_root():
+    result = paths.silver_glob("activities")
+    assert result == "./data/silver/activities/*.parquet"
+
+
 def test_paths_return_strings(monkeypatch):
     monkeypatch.setenv("OWN_GARMIN_DATA_DIR", "/tmp/foo")
     assert isinstance(paths.data_root(), str)
     assert isinstance(paths.session_dir(), str)
     assert isinstance(paths.bronze_path("activities", date(2026, 4, 12)), str)
     assert isinstance(paths.silver_path("activities"), str)
+    assert isinstance(paths.silver_glob("activities"), str)
