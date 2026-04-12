@@ -1,0 +1,108 @@
+import json
+from datetime import date
+from unittest.mock import patch
+
+import pytest
+
+from own_garmin.client import GarminClient
+
+
+@pytest.fixture
+def mock_paths(mocker, tmp_path):
+    """Mocks paths.session_dir to a temporary directory."""
+    m_paths = mocker.patch("own_garmin.client.paths")
+    m_paths.session_dir.return_value = tmp_path
+    return tmp_path
+
+
+@pytest.fixture
+def mock_strategies(mocker):
+    """Mocks the login strategies to prevent real network calls."""
+    return mocker.patch("own_garmin.client.strategies")
+
+
+def test_init_resume_success(mock_paths, mock_strategies):
+    """Scenario: Valid garmin_tokens.json exists, resume succeeds."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_data = {
+        "di_token": "mock_access_token",
+        "di_refresh_token": "mock_refresh_token",
+        "di_client_id": "mock_client_id",
+    }
+    token_file.write_text(json.dumps(token_data))
+
+    # Mock the profile load to simulate a valid session
+    with patch.object(GarminClient, "_load_profile", return_value=None):
+        client = GarminClient()
+
+    assert client.di_token == "mock_access_token"
+    # Ensure no login strategies were triggered
+    assert mock_strategies.portal_web_login_cffi.call_count == 0
+
+
+def test_init_resume_fails_login_succeeds(mock_paths, mock_strategies, monkeypatch):
+    """Scenario: No tokens exist, login chain is triggered and persists tokens."""
+    monkeypatch.setenv("GARMIN_EMAIL", "test@example.com")
+    monkeypatch.setenv("GARMIN_PASSWORD", "secret123")
+
+    # Mock _login_chain to simulate successful auth
+    def side_effect_login(client, email, password, **kwargs):
+        client.di_token = "new_token"
+        client.di_refresh_token = "new_refresh"
+        client.di_client_id = "new_client"
+        return None, None
+
+    with patch.object(GarminClient, "_load_profile"):
+        with patch.object(GarminClient, "_login_chain", side_effect=side_effect_login):
+            client = GarminClient()  # noqa F841
+
+    # Verify tokens were persisted to disk
+    token_file = mock_paths / "garmin_tokens.json"
+    assert token_file.exists()
+    saved_data = json.loads(token_file.read_text())
+    assert saved_data["di_token"] == "new_token"
+
+
+def test_init_fails_on_missing_env_vars(mock_paths, monkeypatch):
+    """Scenario: No session file and no environment credentials."""
+    monkeypatch.delenv("GARMIN_EMAIL", raising=False)
+    monkeypatch.delenv("GARMIN_PASSWORD", raising=False)
+
+    with pytest.raises(ValueError, match="Cannot perform fresh login"):
+        GarminClient()
+
+
+def test_list_activities_api_call(mock_paths, mocker):
+    """Verify list_activities calls the internal _connectapi with correct path."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(json.dumps({"di_token": "valid"}))
+
+    with patch.object(GarminClient, "_load_profile"):
+        client = GarminClient()
+        mock_api = mocker.patch.object(client, "_connectapi")
+
+        start = date(2026, 1, 1)
+        end = date(2026, 1, 2)
+        client.list_activities(start, end)
+
+        # Verify the path matches the internal Garmin endpoint
+        expected_path = (
+            "/activitylist-service/activities/search/activities"
+            "?startDate=2026-01-01&endDate=2026-01-02"
+        )
+        mock_api.assert_called_once_with(expected_path)
+
+
+def test_get_activity_api_call(mock_paths, mocker):
+    """Verify get_activity calls the internal _connectapi with correct path."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(json.dumps({"di_token": "valid"}))
+
+    with patch.object(GarminClient, "_load_profile"):
+        client = GarminClient()
+        mock_api = mocker.patch.object(client, "_connectapi")
+
+        client.get_activity(12345)
+
+        expected_path = "/activity-service/activity/12345"
+        mock_api.assert_called_once_with(expected_path)
