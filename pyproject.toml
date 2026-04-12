@@ -1,7 +1,7 @@
 [project]
 name = "own-garmin"
 version = "0.1.0"
-description = "Add your description here"
+description = "Personal Garmin Connect data pipeline — ingest, process, and query your activity history"
 readme = "README.md"
 authors = [
     { name = "Benedict Aquino", email = "benedict.e.aquino@gmail.com" }
