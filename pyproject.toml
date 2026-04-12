@@ -1,0 +1,29 @@
+[project]
+name = "own-garmin"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Benedict Aquino", email = "benedict.e.aquino@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.1",
+    "garminconnect>=0.3.2",
+    "polars>=1.39.3",
+    "python-dotenv>=1.2.2",
+    "typer>=0.24.1",
+]
+
+[project.scripts]
+own-garmin = "own_garmin.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.10",
+]
