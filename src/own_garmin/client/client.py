@@ -30,8 +30,6 @@ else:
 # Import path resolution from own-garmin
 from own_garmin import paths
 
-# Note: This assumes you have copied the sibling modules from garmin-health-data
-# (.strategies, .constants, .exceptions) into your own_garmin directory.
 from . import strategies
 from .constants import (
     DI_CLIENT_IDS,
