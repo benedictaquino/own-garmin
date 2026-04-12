@@ -1,10 +1,10 @@
 import json
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from own_garmin.client import GarminClient
+from own_garmin.client import GarminClient, GarminTooManyRequestsError
 
 
 @pytest.fixture
@@ -113,3 +113,62 @@ def test_get_activity_api_call(mock_paths, mocker):
 
         expected_path = "/activity-service/activity/12345"
         mock_api.assert_called_once_with(expected_path)
+
+
+def test_get_activity_details_api_call(mock_paths, mocker):
+    """Verify get_activity_details calls _connectapi with correct path and params."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(json.dumps({"di_token": "valid"}))
+
+    with patch.object(GarminClient, "_load_profile"):
+        client = GarminClient()
+        mock_api = mocker.patch.object(client, "_connectapi")
+
+        client.get_activity_details(12345)
+
+        expected_path = "/activity-service/activity/12345/details"
+        mock_api.assert_called_once_with(
+            expected_path, params={"maxChartSize": 99999, "maxPolylineSize": 99999}
+        )
+
+
+def test_request_429_raises_too_many_requests(mock_paths, mocker):
+    """Verify a 429 response from the API raises GarminTooManyRequestsError."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(json.dumps({"di_token": "valid"}))
+
+    with patch.object(GarminClient, "_load_profile"):
+        client = GarminClient()
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 429
+    client._api_session = MagicMock()
+    client._api_session.request.return_value = mock_resp
+
+    with pytest.raises(GarminTooManyRequestsError):
+        client._request("GET", "/some/path")
+
+
+def test_request_401_refreshes_and_retries(mock_paths, mocker):
+    """Verify a 401 triggers _refresh_session and the request is retried once."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(json.dumps({"di_token": "valid"}))
+
+    with patch.object(GarminClient, "_load_profile"):
+        client = GarminClient()
+
+    first = MagicMock()
+    first.status_code = 401
+    second = MagicMock()
+    second.status_code = 200
+    second.ok = True
+
+    client._api_session = MagicMock()
+    client._api_session.request.side_effect = [first, second]
+
+    mock_refresh = mocker.patch.object(client, "_refresh_session")
+
+    resp = client._request("GET", "/some/path")
+
+    mock_refresh.assert_called_once()
+    assert resp is second

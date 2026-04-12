@@ -1,15 +1,5 @@
 import base64
-import logging
 from typing import Dict, Optional
-
-_LOGGER = logging.getLogger(__name__)
-
-try:
-    from ua_generator import generate as _generate_ua
-
-    HAS_UA_GEN = True
-except ImportError:
-    HAS_UA_GEN = False
 
 # --------------------------------------------------------------------------------------
 # SSO ENDPOINTS AND CLIENT IDENTIFIERS
@@ -77,7 +67,6 @@ USER_SETTINGS_URL = "/userprofile-service/userprofile/user-settings"
 ACTIVITIES_URL = "/activitylist-service/activities/search/activities"
 ACTIVITY_URL = "/activity-service/activity"
 ACTIVITY_DETAILS_URL = "/activity-service/activity/{activity_id}/details"
-ACTIVITY_METRICS_URL = "/activity-service/activity/{activity_id}/metrics"
 
 # --------------------------------------------------------------------------------------
 # HELPER FUNCTIONS
@@ -85,13 +74,7 @@ ACTIVITY_METRICS_URL = "/activity-service/activity/{activity_id}/metrics"
 
 
 def _random_browser_headers() -> Dict[str, str]:
-    """Generate a random browser User-Agent + sec-ch-ua headers."""
-    if HAS_UA_GEN:
-        try:
-            ua = _generate_ua()
-            return dict(ua.headers.get())
-        except Exception:
-            pass
+    """Generate a random browser User-Agent header."""
     return {"User-Agent": DESKTOP_USER_AGENT}
 
 

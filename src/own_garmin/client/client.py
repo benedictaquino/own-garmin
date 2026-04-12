@@ -1,5 +1,4 @@
 import base64
-import contextlib
 import json
 import logging
 import os
@@ -72,13 +71,12 @@ class GarminClient:
         self._api_session: Optional[requests.Session] = None
         self._pool_connections: int = 20
         self._pool_maxsize: int = 20
+        self._pending_mfa: Optional[str] = None
 
-        # 1. Resolve session_dir() from paths.py, mkdir -p it.
         self.session_dir = Path(paths.session_dir())
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
 
-        # 2. Try to resume the saved session.
         resume_success = False
         try:
             if Path(self._tokenstore_path).exists():
@@ -89,12 +87,10 @@ class GarminClient:
             else:
                 raise FileNotFoundError("Local token file does not exist.")
         except Exception as e:
-            # Only catch auth-resume failures to trigger re-login.
             _LOGGER.info(
                 f"Auth-resume failed ({type(e).__name__}: {e}). Triggering full login."
             )
 
-        # 3. If resume failed, read env vars, login, and persist.
         if not resume_success:
             from dotenv import load_dotenv
 
@@ -102,7 +98,6 @@ class GarminClient:
             email = os.getenv("GARMIN_EMAIL")
             password = os.getenv("GARMIN_PASSWORD")
 
-            # 4. Raise clear error if credentials missing and resume failed.
             if not email or not password:
                 raise ValueError(
                     "Missing GARMIN_EMAIL or GARMIN_PASSWORD in environment. "
@@ -110,7 +105,6 @@ class GarminClient:
                 )
 
             _LOGGER.info("Initiating fresh 5-strategy login chain...")
-            # We use return_on_mfa=True to pause the chain and prompt via CLI
             result = self._login_chain(email, password, return_on_mfa=True)
 
             if result and result[0] == "needs_mfa":
@@ -153,14 +147,6 @@ class GarminClient:
         params = {"maxChartSize": max_chart, "maxPolylineSize": max_poly}
         return self._connectapi(path, params=params)
 
-    def get_activity_metrics(self, activity_id: int) -> dict:
-        """
-        Fetch raw high-resolution time-series metrics (heart rate, pace, etc.).
-        This typically returns data at 1-second intervals if recorded that way.
-        """
-        path = f"/activity-service/activity/{activity_id}/metrics"
-        return self._connectapi(path)
-
     # ------------------------------------------------------------------
     # Persistence Handlers (Replacing garth.dump/load)
     # ------------------------------------------------------------------
@@ -185,6 +171,7 @@ class GarminClient:
                 },
                 f,
             )
+        Path(path).chmod(0o600)
 
     # ------------------------------------------------------------------
     # Authentication state
@@ -233,10 +220,16 @@ class GarminClient:
         )
         if HAS_CFFI:
             strategy_chain.append(
-                ("mobile+cffi", lambda *a, **k: strategies.portal_login(self, *a, **k))
+                (
+                    "mobile+cffi",
+                    lambda *a, **k: strategies.mobile_login_cffi(self, *a, **k),
+                )
             )
         strategy_chain.append(
-            ("mobile+requests", lambda *a, **k: strategies.mobile_login(self, *a, **k))
+            (
+                "mobile+requests",
+                lambda *a, **k: strategies.mobile_login_requests(self, *a, **k),
+            )
         )
         if HAS_CFFI:
             strategy_chain.append(
@@ -280,20 +273,21 @@ class GarminClient:
     def _resume_login_chain(
         self, _client_state: Any, mfa_code: str
     ) -> Tuple[Optional[str], Any]:
-        if hasattr(self, "_widget_session"):
+        if self._pending_mfa == "widget":
             ticket = strategies.complete_mfa_widget(self, mfa_code)
             self._establish_session(
                 ticket, sess=self._widget_session, service_url=f"{self._sso}/sso/embed"
             )
-        elif hasattr(self, "_mfa_portal_web_session"):
+        elif self._pending_mfa == "portal_web":
             strategies.complete_mfa_portal_web(self, mfa_code)
-        elif hasattr(self, "_mfa_cffi_session"):
-            strategies.complete_mfa_portal(self, mfa_code)
-        elif hasattr(self, "_mfa_session"):
-            strategies.complete_mfa(self, mfa_code)
+        elif self._pending_mfa == "mobile_cffi":
+            strategies.complete_mfa_mobile_cffi(self, mfa_code)
+        elif self._pending_mfa == "mobile_requests":
+            strategies.complete_mfa_mobile_requests(self, mfa_code)
         else:
             raise GarminAuthenticationError("No pending MFA challenge to resume.")
 
+        self._pending_mfa = None
         self._load_profile()
         return None, None
 
@@ -464,8 +458,10 @@ class GarminClient:
         if not self.di_token:
             return
         self._refresh_di_token()
-        with contextlib.suppress(Exception):
+        try:
             self._dump_tokens(self._tokenstore_path)
+        except Exception as e:
+            _LOGGER.warning("Failed to persist refreshed tokens: %s", e)
 
     # ------------------------------------------------------------------
     # Profile & API execution

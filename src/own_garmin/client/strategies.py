@@ -114,6 +114,7 @@ def widget_login_cffi(
         client._widget_session = sess
         client._widget_signin_params = signin_params
         client._widget_last_resp = r
+        client._pending_mfa = "widget"
         if return_on_mfa:
             return "needs_mfa", sess
         if prompt_mfa:
@@ -333,6 +334,7 @@ def _portal_web_login(
         client._mfa_portal_web_session = sess
         client._mfa_portal_web_params = login_params
         client._mfa_portal_web_headers = post_headers
+        client._pending_mfa = "portal_web"
         if return_on_mfa:
             return "needs_mfa", sess
         if prompt_mfa:
@@ -413,7 +415,7 @@ def complete_mfa_portal_web(client: Any, mfa_code: str) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def portal_login(
+def mobile_login_cffi(
     client: Any,
     email: str,
     password: str,
@@ -485,11 +487,12 @@ def portal_login(
         client._mfa_cffi_session = sess
         client._mfa_cffi_params = login_params
         client._mfa_cffi_headers = post_headers
+        client._pending_mfa = "mobile_cffi"
         if return_on_mfa:
             return "needs_mfa", sess
         if prompt_mfa:
             mfa_code = prompt_mfa()
-            complete_mfa_portal(client, mfa_code)
+            complete_mfa_mobile_cffi(client, mfa_code)
             return None, None
         raise GarminAuthenticationError("MFA Required")
 
@@ -500,10 +503,10 @@ def portal_login(
 
     if resp_type == "INVALID_USERNAME_PASSWORD":
         raise GarminAuthenticationError("Invalid Username or Password")
-    raise GarminAuthenticationError(f"Portal login failed: {res}")
+    raise GarminAuthenticationError(f"Mobile cffi login failed: {res}")
 
 
-def complete_mfa_portal(client: Any, mfa_code: str) -> None:
+def complete_mfa_mobile_cffi(client: Any, mfa_code: str) -> None:
     sess = client._mfa_cffi_session
     r = sess.post(
         f"{client._sso}/mobile/api/mfa/verifyCode",
@@ -528,7 +531,7 @@ def complete_mfa_portal(client: Any, mfa_code: str) -> None:
     raise GarminAuthenticationError(f"MFA Verification failed: {res}")
 
 
-def mobile_login(
+def mobile_login_requests(
     client: Any,
     email: str,
     password: str,
@@ -574,11 +577,12 @@ def mobile_login(
             "mfaLastMethodUsed", "email"
         )
         client._mfa_session = sess
+        client._pending_mfa = "mobile_requests"
         if return_on_mfa:
             return "needs_mfa", client._mfa_session
         if prompt_mfa:
             mfa_code = prompt_mfa()
-            complete_mfa(client, mfa_code)
+            complete_mfa_mobile_requests(client, mfa_code)
             return None, None
         raise GarminAuthenticationError("MFA Required")
 
@@ -590,7 +594,7 @@ def mobile_login(
     raise GarminAuthenticationError(f"Login failed: {res}")
 
 
-def complete_mfa(client: Any, mfa_code: str) -> None:
+def complete_mfa_mobile_requests(client: Any, mfa_code: str) -> None:
     r = client._mfa_session.post(
         f"{client._sso}/mobile/api/mfa/verifyCode",
         params={
