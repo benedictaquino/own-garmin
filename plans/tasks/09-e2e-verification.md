@@ -1,14 +1,17 @@
 # Task 09: End-to-end verification
 
 ## Goal
+
 Verify the full Bronze → Silver → Query pipeline works against a real Garmin account.
 
 ## Prerequisites
+
 - Tasks 01–08 complete.
 - Real Garmin credentials in `.env`.
 - An account with at least one activity in the test window.
 
 ## Steps
+
 1. `uv sync` — install deps.
 2. `cp .env.example .env`, fill `GARMIN_EMAIL` and `GARMIN_PASSWORD`.
 3. `uv run own-garmin login`
@@ -32,14 +35,17 @@ Verify the full Bronze → Silver → Query pipeline works against a real Garmin
    - **Expect:** all silver tests pass.
 
 ## Failure modes to probe
+
 - Delete the session dir, re-run `ingest` → should re-login and continue.
 - Delete the silver dir, re-run `process` → should rebuild from bronze without touching Garmin.
 - Pass a future `--since` → prints 0 activities, no error.
 
 ## Acceptance
+
 - All expected outputs observed.
 - Any unexpected failures logged as follow-up tasks before declaring the project complete.
 
 ## Notes
+
 - Do not commit anything from `data/` or the session store.
 - If Garmin returns a Cloudflare challenge during login, wait 10+ minutes before retrying — do not loop.

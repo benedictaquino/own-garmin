@@ -8,7 +8,7 @@ V1 scope: **activities only**, CLI-driven via Typer, managed with **uv**. Sleep,
 
 ## Project layout
 
-```
+```text
 own-garmin/
 ├── pyproject.toml              # uv-managed
 ├── uv.lock
@@ -36,6 +36,7 @@ own-garmin/
 ## Dependencies (pyproject.toml)
 
 Runtime:
+
 - `garminconnect >= 0.3.0` — mobile SSO flow, garth-based token store
 - `polars` — transforms
 - `duckdb` — query engine
@@ -43,12 +44,14 @@ Runtime:
 - `python-dotenv` — load `.env`
 
 Dev:
+
 - `pytest`
 - `ruff` (format + lint)
 
 ## Module design
 
 ### `client.py` — session-aware wrapper
+
 - Wraps `garminconnect.Garmin`.
 - Session dir defaults to `~/.config/own-garmin/session/` (override via `OWN_GARMIN_SESSION_DIR`).
 - On every call:
@@ -58,12 +61,14 @@ Dev:
 - Credentials read from env (`GARMIN_EMAIL`, `GARMIN_PASSWORD`) via `python-dotenv`.
 
 ### `paths.py` — URI builders
+
 - `data_root() -> str` reads `OWN_GARMIN_DATA_DIR` (default `./data`). String return so swapping to `s3://bucket/...` later is transparent.
 - `bronze_path(category, date) -> str` → `{root}/bronze/{category}/year=YYYY/month=MM/day=DD.json`
 - `silver_path(category) -> str` → `{root}/silver/{category}/`
 - All downstream code uses these helpers — no hardcoded paths.
 
 ### `bronze/activities.py` — ingestion
+
 - `ingest(client, since: date, until: date)`:
   - Call `client.list_activities(since, until)` → summary list.
   - For each summary, call `client.get_activity(activity_id)` for full detail.
@@ -73,6 +78,7 @@ Dev:
 - Small `time.sleep` (~0.5s) between detail calls; configurable.
 
 ### `silver/activities.py` — transform (pure function)
+
 - `transform(bronze_json_paths: list[str]) -> pl.DataFrame`:
   - `pl.read_json` each file, concat.
   - Stable schema:
@@ -93,12 +99,14 @@ Dev:
 - Pure function over file paths so silver is fully rebuildable from bronze (core ADR guarantee).
 
 ### `query.py` — DuckDB helper
+
 - `query(sql: str) -> pl.DataFrame`:
   - Open in-memory DuckDB.
   - `CREATE VIEW activities AS SELECT * FROM read_parquet('{silver_path("activities")}/**/*.parquet', hive_partitioning=1)`.
   - Run SQL, return as Polars DataFrame.
 
 ### `cli.py` — Typer commands
+
 - `own-garmin login` — force fresh login, persist tokens. Useful for first-run and re-auth.
 - `own-garmin ingest --since YYYY-MM-DD [--until YYYY-MM-DD]` — default `until` = today. Writes bronze.
 - `own-garmin process` — rebuilds silver from bronze.
