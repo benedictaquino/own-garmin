@@ -45,15 +45,16 @@ def test_init_resume_fails_login_succeeds(mock_paths, mock_strategies, monkeypat
     monkeypatch.setenv("GARMIN_EMAIL", "test@example.com")
     monkeypatch.setenv("GARMIN_PASSWORD", "secret123")
 
-    # Mock _login_chain to simulate successful auth
-    def side_effect_login(client, email, password, **kwargs):
-        client.di_token = "new_token"
-        client.di_refresh_token = "new_refresh"
-        client.di_client_id = "new_client"
-        return None, None
-
     with patch.object(GarminClient, "_load_profile"):
-        with patch.object(GarminClient, "_login_chain", side_effect=side_effect_login):
+        with patch.object(GarminClient, "_login_chain", autospec=True) as m_login:
+
+            def side_effect_with_self(instance, email, password, **kwargs):
+                instance.di_token = "new_token"
+                instance.di_refresh_token = "new_refresh"
+                instance.di_client_id = "new_client"
+                return None, None
+
+            m_login.side_effect = side_effect_with_self
             client = GarminClient()  # noqa F841
 
     # Verify tokens were persisted to disk
