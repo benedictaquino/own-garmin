@@ -1,45 +1,91 @@
-# Task 04: Bronze ingestion — activities
+# Task 04: Bronze ingestion — activities, details, and FIT files
 
 ## Goal
 
-Fetch activity summaries + per-activity detail from Garmin and write them as immutable JSON, partitioned by start-date day.
+Ingest three new bronze categories:
 
-## File
+1. **activities** — activity summaries (already scoped)
+2. **activity_details** — per-activity detail JSON (splits, laps, charts)
+3. **fit** — raw FIT ZIP archives
 
-`src/own_garmin/bronze/activities.py`
+## Files
+
+- `src/own_garmin/bronze/activities.py` — activity summaries
+- `src/own_garmin/bronze/activity_details.py` — activity details
+- `src/own_garmin/bronze/fit.py` — FIT downloads
 
 ## Public API
+
+### `activities.py`
+
+```python
+from datetime import date
+from own_garmin.client import GarminClient
+
+def ingest(client: GarminClient, since: date, until: date) -> int:
+    """Fetch activity summaries, write to bronze. Returns count of activities written."""
+```
+
+**Behavior:**
+
+1. Call `client.list_activities(since, until)` → list of summary dicts.
+2. Group by `startTimeLocal` date.
+3. For each day, write to `bronze_path("activities", day)` as a JSON array.
+4. Idempotent: load existing file, merge by `activityId` (new wins), rewrite only if content changed.
+5. Return count of distinct activity IDs written.
+
+### `activity_details.py`
 
 ```python
 from datetime import date
 from own_garmin.client import GarminClient
 
 def ingest(client: GarminClient, since: date, until: date, sleep_sec: float = 0.5) -> int:
-    """Fetch activities between since and until, write bronze JSON. Returns count of activities written."""
+    """Fetch activity details (splits, laps, metrics), write to bronze. Returns count written."""
 ```
 
-## Behavior
+**Behavior:**
 
-1. Call `client.list_activities(since, until)` → list of summary dicts.
-2. For each summary, call `client.get_activity(summary["activityId"])` for full detail. `time.sleep(sleep_sec)` between calls.
-3. Use the full detail dict as the record (it's a superset of the summary).
-4. Group records by their `startTimeLocal` date (parse with `datetime.fromisoformat` after normalizing Garmin's `YYYY-MM-DD HH:MM:SS` format).
-5. For each day:
-   - Resolve `bronze_path("activities", day)`.
-   - `mkdir -p` its parent directory.
-   - If the file exists, load it; merge with new records keyed by `activityId` (new wins — the ADR notes retroactive Garmin updates require replacing the full-file representation).
-   - Sort records by `activityId` for stable output.
-   - Write `json.dumps(records, indent=2, ensure_ascii=False)` only if content differs from existing (avoid churning mtimes on no-op runs).
-6. Return total number of distinct activities written (post-merge).
+1. Call `client.list_activities(since, until)` → activity list.
+2. For each `activity_id`, call `client.get_activity_details(activity_id)`.
+3. Extract `startTimeLocal` from the main activity record to determine the day partition.
+4. `time.sleep(sleep_sec)` between requests.
+5. Group by day and write JSON files to `bronze_path("activity_details", day)`.
+6. Idempotent: skip if the target day file already exists.
+7. Return count of newly written day-files.
+
+### `fit.py`
+
+```python
+from datetime import date
+from own_garmin.client import GarminClient
+
+def ingest(client: GarminClient, since: date, until: date, sleep_sec: float = 0.5) -> int:
+    """Download FIT ZIPs, write to bronze. Returns count of ZIPs written."""
+```
+
+**Behavior:**
+
+1. Call `client.list_activities(since, until)` → activity list.
+2. For each `activity_id`, call `client.download_fit(activity_id)` → ZIP bytes.
+3. Extract `startTimeLocal` from the activity record to determine the day partition.
+4. Create parent directories under `bronze/fit/year=YYYY/month=MM/day=DD/`.
+5. Write ZIP bytes to `{parent}/{activity_id}.zip`.
+6. `time.sleep(sleep_sec)` between downloads.
+7. Idempotent: skip if ZIP already exists.
+8. Return count of newly written ZIPs.
 
 ## Acceptance
 
-- Running twice over the same window is idempotent: no duplicate entries, second run is a no-op on disk.
-- Files land at `data/bronze/activities/year=YYYY/month=MM/day=DD.json`.
-- Each file is a valid JSON array of activity objects, pretty-printed.
+- All three modules run idempotently: re-running over the same date window writes nothing new to disk.
+- Activity summaries land at `data/bronze/activities/year=YYYY/month=MM/day=DD.json` (JSON array).
+- Activity details land at `data/bronze/activity_details/year=YYYY/month=MM/day=DD.json` (JSON array or single objects).
+- FIT ZIPs land at `data/bronze/fit/year=YYYY/month=MM/day=DD/{activity_id}.zip`.
+- All JSON is pretty-printed with indent=2.
 
 ## Notes
 
-- Do not transform fields here — preserve Garmin's raw shape exactly. That is the whole point of the bronze layer.
-- Sleep between detail calls is the only rate-limit lever; keep it configurable but default conservative (0.5s).
-- If `list_activities` returns a summary missing `activityId`, log and skip rather than raising.
+- **Authentication**: `GarminClient` is pre-authenticated before being passed to any ingest function.
+- Preserve all raw data exactly as returned from Garmin — bronze is immutable and unprocessed.
+- Sleep values are configurable; defaults are conservative (0.5s) to avoid rate-limits.
+- If an activity is missing expected fields (e.g., no `activityId`), log a warning and skip rather than raising.
