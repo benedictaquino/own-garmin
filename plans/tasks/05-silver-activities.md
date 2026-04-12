@@ -1,12 +1,15 @@
 # Task 05: Silver transform — activities
 
 ## Goal
+
 Transform bronze JSON into a clean, typed, partitioned Parquet dataset. Pure function — no I/O except reading bronze and writing silver.
 
 ## File
+
 `src/own_garmin/silver/activities.py`
 
 ## Public API
+
 ```python
 import polars as pl
 
@@ -16,6 +19,7 @@ def rebuild() -> int:
 ```
 
 ## Target schema
+
 | Column              | Type      | Source / transform                                            |
 |---------------------|-----------|---------------------------------------------------------------|
 | `activity_id`       | Int64     | `activityId`                                                  |
@@ -35,6 +39,7 @@ def rebuild() -> int:
 | `month`             | Int32     | derived from `start_time_local`                               |
 
 ## Behavior
+
 - `transform`:
   1. `pl.read_json(path)` each file, concat vertically.
   2. Select/rename/cast to the schema above.
@@ -48,11 +53,13 @@ def rebuild() -> int:
   5. Return `df.height`.
 
 ## Acceptance
+
 - Given fixture JSON with 3 activities (one duplicate), `transform` returns 2 rows with expected types.
 - Semicircle conversion: a Garmin `startLatitude` of `523255203` yields ~43.86° (verify with a known fixture).
 - `rebuild` produces `data/silver/activities/year=YYYY/month=MM/*.parquet`; files are readable by DuckDB with `hive_partitioning=1`.
 
 ## Notes
+
 - Keep `transform` pure — no filesystem writes, no env reads. That keeps it trivially testable (task 08).
 - If a field is missing from a given activity JSON, Polars will surface it as null — do not error.
 - `pl.read_json` on Garmin payloads may need `schema_overrides` if inference picks the wrong type on sparse fields; add overrides only if tests fail.
