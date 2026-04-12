@@ -10,7 +10,7 @@ from own_garmin.client import GarminClient
 @pytest.fixture
 def mock_paths(mocker, tmp_path):
     """Mocks paths.session_dir to a temporary directory."""
-    m_paths = mocker.patch("own_garmin.client.paths")
+    m_paths = mocker.patch("own_garmin.client.client.paths")
     m_paths.session_dir.return_value = tmp_path
     return tmp_path
 
@@ -18,7 +18,7 @@ def mock_paths(mocker, tmp_path):
 @pytest.fixture
 def mock_strategies(mocker):
     """Mocks the login strategies to prevent real network calls."""
-    return mocker.patch("own_garmin.client.strategies")
+    return mocker.patch("own_garmin.client.client.strategies")
 
 
 def test_init_resume_success(mock_paths, mock_strategies):
@@ -64,10 +64,16 @@ def test_init_resume_fails_login_succeeds(mock_paths, mock_strategies, monkeypat
     assert saved_data["di_token"] == "new_token"
 
 
-def test_init_fails_on_missing_env_vars(mock_paths, monkeypatch):
+def test_init_fails_on_missing_env_vars(mock_paths, monkeypatch, mocker):
     """Scenario: No session file and no environment credentials."""
+    # Mock load_dotenv globally since it's imported inside the method
+    mocker.patch("dotenv.load_dotenv")
+
     monkeypatch.delenv("GARMIN_EMAIL", raising=False)
     monkeypatch.delenv("GARMIN_PASSWORD", raising=False)
+
+    # Also mock os.getenv in the module where it's used
+    mocker.patch("own_garmin.client.client.os.getenv", return_value=None)
 
     with pytest.raises(ValueError, match="Cannot perform fresh login"):
         GarminClient()

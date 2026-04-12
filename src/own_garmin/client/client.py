@@ -239,7 +239,9 @@ class GarminClient:
                 return result
 
             except GarminAuthenticationError:
-                raise  # Bad credentials, fail immediately
+                # If we get an explicit auth failure (401/403 with JSON), it means
+                # the credentials are bad. Don't waste time trying other strategies.
+                raise
             except (GarminTooManyRequestsError, GarminConnectionError) as e:
                 _LOGGER.warning("Login strategy %s failed: %s", name, e)
                 last_err = e
@@ -288,6 +290,8 @@ class GarminClient:
     @staticmethod
     def _http_post(url: str, **kwargs: Any) -> Any:
         if HAS_CFFI:
+            # Always use curl_cffi for DI token exchange to avoid Cloudflare blocks
+            # on the diauth endpoints.
             return cffi_requests.post(url, impersonate="chrome", **kwargs)
         return requests.post(url, **kwargs)
 
@@ -298,6 +302,8 @@ class GarminClient:
         di_token = None
         di_refresh = None
         di_client_id = None
+        last_transport_error: Optional[Exception] = None
+        last_server_error: Optional[tuple] = None
         had_auth_failure = False
 
         for client_id in DI_CLIENT_IDS:
@@ -320,13 +326,18 @@ class GarminClient:
                     },
                     timeout=30,
                 )
-            except _TRANSPORT_EXCEPTIONS:
+            except _TRANSPORT_EXCEPTIONS as exc:
+                _LOGGER.debug("DI exchange transport error for %s: %s", client_id, exc)
+                last_transport_error = exc
                 continue
 
             if r.status_code == 429:
                 raise GarminTooManyRequestsError("DI token exchange rate limited")
             if not r.ok:
-                if r.status_code < 500:
+                _LOGGER.debug("DI exchange failed for %s: %s", client_id, r.status_code)
+                if r.status_code >= 500:
+                    last_server_error = (r.status_code, r.text[:200])
+                else:
                     had_auth_failure = True
                 continue
 
@@ -338,20 +349,22 @@ class GarminClient:
                     raise ValueError("response missing refresh_token")
                 di_client_id = self._extract_client_id_from_jwt(di_token) or client_id
                 break
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("DI token parse failed for %s: %s", client_id, e)
                 continue
 
-            if not di_token:
-                if had_auth_failure:
-                    # We know the server specifically rejected the tickets
-                    raise GarminAuthenticationError(
-                        "Invalid Service Ticket or Client ID mismatch."
-                    )
-                else:
-                    # We likely hit 500s or timeouts across the board
-                    raise GarminConnectionError(
-                        "Could not reach Garmin servers for token exchange."
-                    )
+        if not di_token:
+            if last_transport_error is not None:
+                raise GarminConnectionError(
+                    f"DI token exchange transport error: {last_transport_error}"
+                )
+            if last_server_error is not None and not had_auth_failure:
+                raise GarminConnectionError(
+                    f"DI token exchange server error: HTTP {last_server_error[0]}"
+                )
+            raise GarminAuthenticationError(
+                "DI token exchange failed for all client IDs"
+            )
 
         self.di_token = di_token
         self.di_refresh_token = di_refresh
