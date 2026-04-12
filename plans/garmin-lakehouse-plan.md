@@ -16,16 +16,24 @@ own-garmin/
 ├── .gitignore                  # data/, .env, .session/, .venv/, __pycache__/
 ├── data/                       # gitignored — bronze/ and silver/ live here
 ├── src/own_garmin/
+│   ├── client                  
+│   │   ├── __init__.py
+│   │   ├── client.py           # DI Client + Session Persistence
+│   │   ├── constants.py        # DI Client IDs and Garmin Endpoints
+│   │   ├── strategies.py       # login chain strategy
+│   │   └── exceptions.py       # Garmin-specific error hierarchy
 │   ├── __init__.py
 │   ├── cli.py                  # Typer app: login, ingest, process, query
-│   ├── client.py               # GarminClient wrapper + session persistence
 │   ├── paths.py                # URI builders (local today, s3:// tomorrow)
 │   ├── bronze/
 │   │   ├── __init__.py
-│   │   └── activities.py       # fetch + write raw JSON
+│   │   ├── activities.py       # fetch + write raw JSON summaries
+│   │   ├── activity_details.py # fetch + write activity detail JSON
+│   │   └── fit.py              # fetch + write FIT ZIP archives
 │   ├── silver/
 │   │   ├── __init__.py
-│   │   └── activities.py       # Polars transform (pure function)
+│   │   ├── activities.py       # Polars transform: JSON summaries → Parquet
+│   │   └── fit_records.py      # Polars transform: FIT binary → per-second time-series
 │   └── query.py                # DuckDB helper over silver parquet
 ├── tests/
 │   ├── fixtures/activities/*.json
@@ -37,11 +45,13 @@ own-garmin/
 
 Runtime:
 
-- `garminconnect >= 0.3.0` — mobile SSO flow, garth-based token store
+- `curl-cffi >= 0.7.1` - TLS impersonation
+- `requests` - API calls
 - `polars` — transforms
 - `duckdb` — query engine
 - `typer` — CLI
 - `python-dotenv` — load `.env`
+- `garmin-fit-sdk` — parse raw FIT binary files
 
 Dev:
 
@@ -50,13 +60,13 @@ Dev:
 
 ## Module design
 
-### `client.py` — session-aware wrapper
+### `client.py` — Direct Integration (DI) / Vendored Stealth approach
 
-- Wraps `garminconnect.Garmin`.
 - Session dir defaults to `~/.config/own-garmin/session/` (override via `OWN_GARMIN_SESSION_DIR`).
-- On every call:
-  1. Try `Garmin().login(tokenstore=session_dir)` to resume.
-  2. On `GarminConnectAuthenticationError` / expiry, fall back to email+password login and immediately persist new tokens via `client.garth.dump(session_dir)`.
+- Auth logic:
+  - Load existing tokens
+  - Check JWT expirty; if <15 minutes remaining, use `refresh_token`
+  - If refresh fails or tokens missing, trigger _login_chain from strategies.py
 - Expose thin methods used by bronze: `list_activities(start, end)`, `get_activity(activity_id)`.
 - Credentials read from env (`GARMIN_EMAIL`, `GARMIN_PASSWORD`) via `python-dotenv`.
 
@@ -67,17 +77,32 @@ Dev:
 - `silver_path(category) -> str` → `{root}/silver/{category}/`
 - All downstream code uses these helpers — no hardcoded paths.
 
-### `bronze/activities.py` — ingestion
+### `bronze/activities.py` — activity summary ingestion
 
 - `ingest(client, since: date, until: date)`:
   - Call `client.list_activities(since, until)` → summary list.
-  - For each summary, call `client.get_activity(activity_id)` for full detail.
   - Group activities by `startTimeLocal` date.
   - Write each day's list to `bronze_path("activities", day)` as pretty JSON.
-- **Idempotency:** if the target file exists, load it, merge by `activityId` (new wins — ADR note: retroactive updates require full-file replace), and rewrite only if content changed.
-- Small `time.sleep` (~0.5s) between detail calls; configurable.
+- **Idempotency:** if the target file exists, load it, merge by `activityId` (new wins), and rewrite only if content changed.
 
-### `silver/activities.py` — transform (pure function)
+### `bronze/activity_details.py` — activity details ingestion
+
+- `ingest(client, since: date, until: date)`:
+  - Call `client.list_activities(since, until)` → activity list.
+  - For each `activity_id`, call `client.get_activity_details(activity_id)` to fetch splits, laps, metrics.
+  - Group by `startTimeLocal` date (from activity summary).
+  - Write each day's details to `bronze_path("activity_details", day)` as pretty JSON.
+- **Idempotency:** skip if file already exists; optional `sleep_sec` between requests (default ~0.5s).
+
+### `bronze/fit.py` — FIT file ingestion
+
+- `ingest(client, since: date, until: date)`:
+  - Call `client.list_activities(since, until)` → activity list.
+  - For each `activity_id`, call `client.download_fit(activity_id)` → ZIP bytes.
+  - Write ZIP to `bronze_path("fit", day)/{activity_id}.zip`.
+- **Idempotency:** skip if file already exists; optional `sleep_sec` between downloads (default ~0.5s).
+
+### `silver/activities.py` — summary transform (pure function)
 
 - `transform(bronze_json_paths: list[str]) -> pl.DataFrame`:
   - `pl.read_json` each file, concat.
@@ -95,8 +120,28 @@ Dev:
     - `year`, `month` partition columns from `start_time_local`.
   - Deduplicate by `activity_id` keeping the latest ingested copy.
 - `rebuild(bronze_root, silver_root)`:
-  - Glob all `bronze/activities/**/*.json`, transform, write partitioned parquet to `silver/activities/year=YYYY/month=MM/` via `df.write_parquet(..., partition_by=["year","month"])`.
-- Pure function over file paths so silver is fully rebuildable from bronze (core ADR guarantee).
+  - Glob all `bronze/activities/**/*.json`, transform, write partitioned parquet to `silver/activities/year=YYYY/month=MM/`.
+
+### `silver/fit_records.py` — FIT time-series transform (pure function)
+
+- `transform(fit_zip_paths: list[str]) -> pl.DataFrame`:
+  - For each ZIP file: extract the `.fit` binary using `zipfile.ZipFile`, parse with `garmin-fit-sdk`.
+  - Extract FIT "record" messages (message type 20) containing per-second timestamp + telemetry.
+  - Stable schema:
+    - `activity_id: Int64` (from ZIP filename stem)
+    - `timestamp: Datetime` (UTC, from FIT record `timestamp` field)
+    - `heart_rate: Int32 (nullable)` — bpm
+    - `cadence: Int32 (nullable)` — rpm
+    - `speed: Float64 (nullable)` — m/s
+    - `power: Int32 (nullable)` — watts
+    - `distance: Float64 (nullable)` — metres cumulative
+    - `altitude: Float64 (nullable)` — metres
+    - `position_lat: Float64 (nullable)` — degrees, converted from semicircles: `deg = semi * (180 / 2**31)`
+    - `position_lon: Float64 (nullable)` — degrees, converted from semicircles
+    - `year`, `month` partition columns from `timestamp`.
+  - Deduplicate by `(activity_id, timestamp)` keeping the latest row.
+- `rebuild(bronze_root, silver_root)`:
+  - Glob all `bronze/fit/**/*.zip`, transform, write partitioned parquet to `silver/fit_records/year=YYYY/month=MM/`.
 
 ### `query.py` — DuckDB helper
 
@@ -132,9 +177,10 @@ Dev:
 
 - `pyproject.toml`
 - `.env.example`, `.gitignore`
-- `src/own_garmin/{__init__,cli,client,paths,query}.py`
-- `src/own_garmin/bronze/{__init__,activities}.py`
-- `src/own_garmin/silver/{__init__,activities}.py`
+- `src/own_garmin/{__init__,cli,paths,query}.py`
+- `src/own_garmin/client/{__init__,client,strategies,constants,exceptions}.py`
+- `src/own_garmin/bronze/{__init__,activities,activity_details,fit}.py`
+- `src/own_garmin/silver/{__init__,activities,fit_records}.py`
 - `tests/fixtures/activities/*.json`
 - `tests/test_silver_activities.py`
 
@@ -164,7 +210,7 @@ Implementation tasks live in `plans/tasks/` and are designed to be picked up seq
 
 1. `tasks/01-project-scaffold.md` — uv init, pyproject, gitignore, env template, directory layout
 2. `tasks/02-paths-config.md` — `paths.py` URI helpers + env loading
-3. `tasks/03-client-session.md` — Garmin client wrapper with token persistence
+3. `tasks/03-client-session.md` — Garmin client with token persistence
 4. `tasks/04-bronze-activities.md` — activity ingestion to bronze JSON
 5. `tasks/05-silver-activities.md` — Polars transform + partitioned parquet
 6. `tasks/06-query-duckdb.md` — DuckDB query helper
