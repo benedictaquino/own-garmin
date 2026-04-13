@@ -165,15 +165,31 @@ class GarminClient:
             response body is not a valid ZIP archive.
         """
         path = ACTIVITY_FIT_URL.format(activity_id=activity_id)
-        resp = self._request("GET", path)
+        resp = self._request(
+            "GET",
+            path,
+            headers={
+                "Accept": "application/zip, */*",
+                "DI-Backend": "connectapi.garmin.com",
+            },
+        )
         try:
             with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-                names = zf.namelist()
-                if not names:
+                fit_names = [n for n in zf.namelist() if n.lower().endswith(".fit")]
+                if not fit_names:
                     raise GarminConnectionError(
-                        f"FIT zip for activity {activity_id} contained no files"
+                        f"FIT zip for activity {activity_id} contained no .fit files "
+                        f"(found: {zf.namelist()})"
                     )
-                return zf.read(names[0])
+                if len(fit_names) > 1:
+                    _LOGGER.warning(
+                        "FIT zip for activity %s contained %d .fit files %s; using %s",
+                        activity_id,
+                        len(fit_names),
+                        fit_names,
+                        fit_names[0],
+                    )
+                return zf.read(fit_names[0])
         except zipfile.BadZipFile as exc:
             raise GarminConnectionError(
                 f"FIT response for activity {activity_id} is not a valid ZIP"
