@@ -150,7 +150,7 @@ class GarminClient:
         return self._connectapi(path, params=params)
 
     # ------------------------------------------------------------------
-    # Persistence Handlers (Replacing garth.dump/load)
+    # Persistence Handlers
     # ------------------------------------------------------------------
 
     def _load_tokens(self, path: str) -> None:
