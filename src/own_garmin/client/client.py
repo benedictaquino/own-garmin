@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import os
+import tempfile
 import time
 import zipfile
 from datetime import date
@@ -10,25 +11,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import requests
+from dotenv import load_dotenv
 
-try:
-    from curl_cffi import requests as cffi_requests
-    from curl_cffi.requests.exceptions import RequestException as _CffiRequestException
-
-    HAS_CFFI = True
-except ImportError:
-    HAS_CFFI = False
-    _CffiRequestException = None  # type: ignore[assignment,misc]
-
-if HAS_CFFI:
-    _TRANSPORT_EXCEPTIONS: tuple[type, ...] = (
-        requests.RequestException,
-        _CffiRequestException,
-    )
-else:
-    _TRANSPORT_EXCEPTIONS = (requests.RequestException,)
-
-# Import path resolution from own-garmin
 from own_garmin import paths
 
 from . import strategies
@@ -40,19 +24,31 @@ from .constants import (
     DI_CLIENT_IDS,
     DI_GRANT_TYPE,
     DI_TOKEN_URL,
+    HAS_CFFI,
     LOGIN_DELAY_MAX_S,
     MOBILE_SSO_SERVICE_URL,
     SOCIAL_PROFILE_URL,
+    CffiRequestException,
     _build_basic_auth,
     _native_headers,
+    cffi_requests,
 )
 from .exceptions import (
     GarminAuthenticationError,
     GarminConnectionError,
     GarminTooManyRequestsError,
 )
+from .strategies import StrategyResult
 
 _LOGGER = logging.getLogger(__name__)
+
+if HAS_CFFI and CffiRequestException is not None:
+    _TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+        requests.RequestException,
+        CffiRequestException,
+    )
+else:
+    _TRANSPORT_EXCEPTIONS = (requests.RequestException,)
 
 
 class GarminClient:
@@ -61,7 +57,7 @@ class GarminClient:
     Completely decoupled from python-garminconnect and garth.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, prompt_mfa: Callable[[], str] | None = None) -> None:
         self.domain = "garmin.com"
         self._sso = f"https://sso.{self.domain}"
         self._connect = f"https://connect.{self.domain}"
@@ -80,27 +76,45 @@ class GarminClient:
         self._pool_maxsize: int = 20
         self._pending_mfa: str | None = None
 
+        # MFA state — set by login strategies when a challenge is triggered
+        self._widget_session: Any = None
+        self._widget_signin_params: dict[str, str] | None = None
+        self._widget_last_resp: Any = None
+        self._mfa_method: str = "email"
+        self._mfa_portal_web_session: Any = None
+        self._mfa_portal_web_params: dict[str, str] | None = None
+        self._mfa_portal_web_headers: dict[str, str] | None = None
+        self._mfa_cffi_session: Any = None
+        self._mfa_cffi_params: dict[str, str] | None = None
+        self._mfa_cffi_headers: dict[str, str] | None = None
+        self._mfa_session: Any = None  # mobile_requests MFA session
+
         self.session_dir = Path(paths.session_dir())
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
 
         resume_success = False
-        try:
-            if Path(self._tokenstore_path).exists():
+        if Path(self._tokenstore_path).exists():
+            try:
                 self._load_tokens(self._tokenstore_path)
                 self._load_profile()
                 resume_success = True
                 _LOGGER.info("Session resumed successfully from local token store.")
-            else:
-                raise FileNotFoundError("Local token file does not exist.")
-        except Exception as e:
-            _LOGGER.info(
-                f"Auth-resume failed ({type(e).__name__}: {e}). Triggering full login."
-            )
+            except (
+                OSError,
+                json.JSONDecodeError,
+                ValueError,
+                GarminAuthenticationError,
+            ) as e:
+                _LOGGER.info(
+                    "Auth-resume failed (%s: %s). Triggering full login.",
+                    type(e).__name__,
+                    e,
+                )
+        else:
+            _LOGGER.info("No token file found. Triggering full login.")
 
         if not resume_success:
-            from dotenv import load_dotenv
-
             load_dotenv()
             email = os.getenv("GARMIN_EMAIL")
             password = os.getenv("GARMIN_PASSWORD")
@@ -115,7 +129,9 @@ class GarminClient:
             result = self._login_chain(email, password, return_on_mfa=True)
 
             if result and result[0] == "needs_mfa":
-                mfa_code = input("\nEnter Garmin MFA code: ")
+                mfa_code = (
+                    prompt_mfa() if prompt_mfa else input("\nEnter Garmin MFA code: ")
+                )
                 self._resume_login_chain(mfa_code)
 
             self._dump_tokens(self._tokenstore_path)
@@ -129,10 +145,10 @@ class GarminClient:
 
     def list_activities(self, start: date, end: date) -> list[dict]:
         """Fetch summary dicts of activities within a date range."""
-        path = (
-            f"{ACTIVITIES_URL}?startDate={start.isoformat()}&endDate={end.isoformat()}"
+        return self._connectapi(
+            ACTIVITIES_URL,
+            params={"startDate": start.isoformat(), "endDate": end.isoformat()},
         )
-        return self._connectapi(path)
 
     def get_activity(self, activity_id: int) -> dict:
         """Fetch the full summary dictionary for a specific activity."""
@@ -172,6 +188,7 @@ class GarminClient:
                 "Accept": "application/zip, */*",
                 "DI-Backend": "connectapi.garmin.com",
             },
+            timeout=60,
         )
         try:
             with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
@@ -210,16 +227,26 @@ class GarminClient:
             raise GarminAuthenticationError("Missing di_token in saved state.")
 
     def _dump_tokens(self, path: str) -> None:
-        with open(path, "w") as f:
-            json.dump(
-                {
-                    "di_token": self.di_token,
-                    "di_refresh_token": self.di_refresh_token,
-                    "di_client_id": self.di_client_id,
-                },
-                f,
-            )
-        Path(path).chmod(0o600)
+        data = json.dumps(
+            {
+                "di_token": self.di_token,
+                "di_refresh_token": self.di_refresh_token,
+                "di_client_id": self.di_client_id,
+            }
+        )
+        dir_path = str(Path(path).parent)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write(data)
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     # ------------------------------------------------------------------
     # Authentication state
@@ -249,9 +276,9 @@ class GarminClient:
         password: str,
         prompt_mfa: Callable[[], str] | None = None,
         return_on_mfa: bool = False,
-    ) -> tuple[str | None, Any]:
+    ) -> StrategyResult:
         """Runs the 5-strategy Cloudflare evasion chain."""
-        strategy_chain: list[tuple[str, Callable[..., tuple[str | None, Any]]]] = []
+        strategy_chain: list[tuple[str, Callable[..., StrategyResult]]] = []
 
         if HAS_CFFI:
             strategy_chain.append(
@@ -288,14 +315,14 @@ class GarminClient:
             )
 
         _LOGGER.warning(
-            "Starting login chain. Each strategy may sleep up to %.0fs for Cloudflare "
-            "evasion — total login may take several minutes.",
+            "Starting login chain. Each strategy may sleep up to %.0fs for "
+            "Cloudflare evasion — total login may take several minutes.",
             LOGIN_DELAY_MAX_S,
         )
         last_err: Exception | None = None
         for name, method in strategy_chain:
             try:
-                _LOGGER.info("Trying login strategy: %s", name)
+                _LOGGER.info(f"Trying login strategy: {name}")
                 result = method(
                     email, password, prompt_mfa=prompt_mfa, return_on_mfa=return_on_mfa
                 )
@@ -309,11 +336,13 @@ class GarminClient:
                 # the credentials are bad. Don't waste time trying other strategies.
                 raise
             except (GarminTooManyRequestsError, GarminConnectionError) as e:
-                _LOGGER.warning("Login strategy %s failed: %s", name, e)
+                _LOGGER.warning(f"Login strategy {name} failed: {e}")
                 last_err = e
                 continue
             except Exception as e:
-                _LOGGER.warning("Login strategy %s failed: %s", name, e)
+                _LOGGER.warning(
+                    f"Login strategy {name} failed unexpectedly", exc_info=True
+                )
                 last_err = e
                 continue
 
@@ -361,7 +390,7 @@ class GarminClient:
         di_token = None
         di_refresh = None
         di_client_id = None
-        last_transport_error: Exception | None = None
+        last_transport_error: BaseException | None = None
         last_server_error: tuple | None = None
         had_auth_failure = False
 
@@ -385,15 +414,15 @@ class GarminClient:
                     },
                     timeout=30,
                 )
-            except _TRANSPORT_EXCEPTIONS as exc:
-                _LOGGER.debug("DI exchange transport error for %s: %s", client_id, exc)
+            except _TRANSPORT_EXCEPTIONS as exc:  # type: ignore[misc]
+                _LOGGER.debug(f"DI exchange transport error for {client_id}: {exc}")
                 last_transport_error = exc
                 continue
 
             if r.status_code == 429:
                 raise GarminTooManyRequestsError("DI token exchange rate limited")
             if not r.ok:
-                _LOGGER.debug("DI exchange failed for %s: %s", client_id, r.status_code)
+                _LOGGER.debug(f"DI exchange failed for {client_id}: {r.status_code}")
                 if r.status_code >= 500:
                     last_server_error = (r.status_code, r.text[:200])
                 else:
@@ -409,7 +438,7 @@ class GarminClient:
                 di_client_id = self._extract_client_id_from_jwt(di_token) or client_id
                 break
             except Exception as e:
-                _LOGGER.debug("DI token parse failed for %s: %s", client_id, e)
+                _LOGGER.debug(f"DI token parse failed for {client_id}: {e}")
                 continue
 
         if not di_token:
@@ -466,37 +495,35 @@ class GarminClient:
         self.di_token = new_token
         self.di_refresh_token = data.get("refresh_token", self.di_refresh_token)
         self.di_client_id = (
-            self._extract_client_id_from_jwt(self.di_token) or self.di_client_id
+            self._extract_client_id_from_jwt(new_token) or self.di_client_id
         )
 
     @staticmethod
-    def _extract_client_id_from_jwt(token: str) -> str | None:
+    def _decode_jwt_payload(token: str) -> dict | None:
         try:
             parts = token.split(".")
             if len(parts) < 2:
                 return None
             payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode())
-            return str(payload.get("client_id")) if payload.get("client_id") else None
+            return json.loads(base64.urlsafe_b64decode(payload_b64).decode())
         except Exception:
             return None
+
+    @staticmethod
+    def _extract_client_id_from_jwt(token: str) -> str | None:
+        payload = GarminClient._decode_jwt_payload(token)
+        if payload and payload.get("client_id"):
+            return str(payload["client_id"])
+        return None
 
     def _token_expires_soon(self) -> bool:
         if not self.di_token:
             return False
-        try:
-            parts = str(self.di_token).split(".")
-            if len(parts) >= 2:
-                payload = json.loads(
-                    base64.urlsafe_b64decode(
-                        (parts[1] + "=" * (-len(parts[1]) % 4)).encode()
-                    ).decode()
-                )
-                exp = payload.get("exp")
-                if exp and time.time() > (int(exp) - 900):
-                    return True
-        except Exception:
-            pass
+        payload = self._decode_jwt_payload(self.di_token)
+        if payload:
+            exp = payload.get("exp")
+            if exp and time.time() > (int(exp) - 900):
+                return True
         return False
 
     def _refresh_session(self) -> None:
@@ -506,7 +533,11 @@ class GarminClient:
         try:
             self._dump_tokens(self._tokenstore_path)
         except Exception as e:
-            _LOGGER.warning("Failed to persist refreshed tokens: %s", e)
+            _LOGGER.warning(f"Failed to persist refreshed tokens: {e}")
+
+    def _sleep(self, seconds: float) -> None:
+        """Sleep for the given duration. Isolated here so tests can stub it."""
+        time.sleep(seconds)
 
     # ------------------------------------------------------------------
     # Profile & API execution
@@ -540,8 +571,10 @@ class GarminClient:
         merged.update(custom_headers)
 
         if self._api_session is None:
+            from requests.adapters import HTTPAdapter
+
             self._api_session = requests.Session()
-            adapter = requests.adapters.HTTPAdapter(
+            adapter = HTTPAdapter(
                 pool_connections=self._pool_connections,
                 pool_maxsize=self._pool_maxsize,
             )

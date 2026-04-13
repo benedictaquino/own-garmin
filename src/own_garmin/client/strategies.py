@@ -1,19 +1,12 @@
 import logging
 import random
 import re
-import time
 from typing import Any, Callable
 
 import requests
 
-try:
-    from curl_cffi import requests as cffi_requests
-
-    HAS_CFFI = True
-except ImportError:
-    HAS_CFFI = False
-
 from .constants import (
+    HAS_CFFI,
     LOGIN_DELAY_MAX_S,
     LOGIN_DELAY_MIN_S,
     MOBILE_SSO_CLIENT_ID,
@@ -22,6 +15,7 @@ from .constants import (
     PORTAL_SSO_CLIENT_ID,
     PORTAL_SSO_SERVICE_URL,
     _browser_headers,
+    cffi_requests,
 )
 from .exceptions import (
     GarminAuthenticationError,
@@ -31,8 +25,11 @@ from .exceptions import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Type alias for login strategy function return values
+type StrategyResult = tuple[str | None, Any]
+
 # Merged flexible regex
-_CSRF_RE = re.compile(r'name="_?csrf"\s+value=["\'](.+?)["\']')
+_CSRF_RE = re.compile(r'name=["\']_?csrf["\']\s+value=["\'](.+?)["\']')
 _TITLE_RE = re.compile(r"<title>(.+?)</title>")
 _TICKET_RE = re.compile(r'embed\?ticket=([^"]+)"')
 
@@ -47,7 +44,7 @@ def widget_login_cffi(
     password: str,
     prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> tuple[str | None, Any]:
+) -> StrategyResult:
     if not HAS_CFFI:
         raise GarminConnectionError("curl_cffi not installed; widget+cffi unavailable")
 
@@ -193,7 +190,7 @@ def portal_web_login_cffi(
     password: str,
     prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> tuple[str | None, Any]:
+) -> StrategyResult:
     if not HAS_CFFI:
         raise GarminConnectionError("curl_cffi not installed; portal+cffi unavailable")
 
@@ -203,7 +200,7 @@ def portal_web_login_cffi(
     rate_limited_count = 0
     for imp in impersonations:
         try:
-            _LOGGER.debug("Trying portal+cffi with impersonation=%s", imp)
+            _LOGGER.debug(f"Trying portal+cffi with impersonation={imp}")
             sess: Any = cffi_requests.Session(impersonate=imp)
             return _portal_web_login(
                 client,
@@ -216,13 +213,13 @@ def portal_web_login_cffi(
         except GarminAuthenticationError:
             raise
         except GarminTooManyRequestsError as e:
-            _LOGGER.debug("portal+cffi(%s) 429: %s", imp, e)
+            _LOGGER.debug(f"portal+cffi({imp}) 429: {e}")
             last_err = e
             last_429 = e
             rate_limited_count += 1
             continue
         except Exception as e:
-            _LOGGER.debug("portal+cffi(%s) failed: %s", imp, e)
+            _LOGGER.debug(f"portal+cffi({imp}) failed: {e}")
             last_err = e
             continue
 
@@ -239,7 +236,7 @@ def portal_web_login_requests(
     password: str,
     prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> tuple[str | None, Any]:
+) -> StrategyResult:
     sess = requests.Session()
     return _portal_web_login(
         client,
@@ -258,7 +255,7 @@ def _portal_web_login(
     password: str,
     prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> tuple[str | None, Any]:
+) -> StrategyResult:
     signin_url = f"{client._sso}/portal/sso/en-US/sign-in"
     browser_hdrs = _browser_headers()
 
@@ -280,9 +277,9 @@ def _portal_web_login(
 
     delay_s = random.uniform(LOGIN_DELAY_MIN_S, LOGIN_DELAY_MAX_S)
     _LOGGER.info(
-        "Portal login: waiting %.0fs to avoid Cloudflare rate limiting...", delay_s
+        f"Portal login: waiting {delay_s:.0f}s to avoid Cloudflare rate limiting..."
     )
-    time.sleep(delay_s)
+    client._sleep(delay_s)
 
     login_url = f"{client._sso}/portal/api/login"
     login_params = {
@@ -418,7 +415,7 @@ def mobile_login_cffi(
     password: str,
     prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> tuple[str | None, Any]:
+) -> StrategyResult:
     if not HAS_CFFI:
         raise GarminConnectionError("curl_cffi not installed; mobile+cffi unavailable")
 
@@ -441,8 +438,8 @@ def mobile_login_cffi(
         )
 
     delay_s = random.uniform(LOGIN_DELAY_MIN_S, LOGIN_DELAY_MAX_S)
-    _LOGGER.info("Mobile portal login: waiting %.0fs...", delay_s)
-    time.sleep(delay_s)
+    _LOGGER.info(f"Mobile portal login: waiting {delay_s:.0f}s...")
+    client._sleep(delay_s)
 
     login_params = {
         "clientId": MOBILE_SSO_CLIENT_ID,
@@ -536,7 +533,7 @@ def mobile_login_requests(
     password: str,
     prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> tuple[str | None, Any]:
+) -> StrategyResult:
     sess = requests.Session()
     sess.headers.update({"User-Agent": MOBILE_SSO_USER_AGENT})
     get_resp = sess.get(
@@ -550,8 +547,8 @@ def mobile_login_requests(
         raise GarminConnectionError(f"Mobile login GET failed: {get_resp.status_code}")
 
     delay_s = random.uniform(LOGIN_DELAY_MIN_S, LOGIN_DELAY_MAX_S)
-    _LOGGER.info("Mobile login: waiting %.0fs...", delay_s)
-    time.sleep(delay_s)
+    _LOGGER.info(f"Mobile login: waiting {delay_s:.0f}s...")
+    client._sleep(delay_s)
 
     r = sess.post(
         f"{client._sso}/mobile/api/login",

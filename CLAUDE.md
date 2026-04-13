@@ -40,6 +40,7 @@ class GarminClient:
     def list_activities(self, start: date, end: date) -> list[dict]: ...
     def get_activity(self, activity_id: int) -> dict: ...          # summary
     def get_activity_details(self, activity_id: int) -> dict: ...  # splits, laps, metrics
+    def download_fit(self, activity_id: int) -> bytes: ...         # raw FIT file bytes
 ```
 
 ### Key design rules

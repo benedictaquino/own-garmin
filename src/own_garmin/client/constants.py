@@ -1,6 +1,20 @@
 import base64
 
 # --------------------------------------------------------------------------------------
+# OPTIONAL CURL_CFFI DETECTION
+# --------------------------------------------------------------------------------------
+
+try:
+    import curl_cffi.requests as cffi_requests
+    from curl_cffi.requests.exceptions import RequestException as CffiRequestException
+
+    HAS_CFFI = True
+except ImportError:
+    cffi_requests = None  # type: ignore[assignment]
+    CffiRequestException = None  # type: ignore[assignment]
+    HAS_CFFI = False
+
+# --------------------------------------------------------------------------------------
 # SSO ENDPOINTS AND CLIENT IDENTIFIERS
 # --------------------------------------------------------------------------------------
 
