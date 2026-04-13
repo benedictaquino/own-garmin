@@ -221,7 +221,7 @@ def portal_web_login_cffi(
             last_429 = e
             rate_limited_count += 1
             continue
-        except (GarminConnectionError, Exception) as e:
+        except Exception as e:
             _LOGGER.debug("portal+cffi(%s) failed: %s", imp, e)
             last_err = e
             continue
@@ -295,10 +295,7 @@ def _portal_web_login(
         "Accept": "application/json, text/plain, */*",
         "Content-Type": "application/json",
         "Origin": client._sso,
-        "Referer": (
-            f"{signin_url}?clientId={PORTAL_SSO_CLIENT_ID}"
-            f"&service={PORTAL_SSO_SERVICE_URL}"
-        ),
+        "Referer": get_resp.url,
     }
 
     r = sess.post(
@@ -521,6 +518,8 @@ def complete_mfa_mobile_cffi(client: Any, mfa_code: str) -> None:
         },
         timeout=30,
     )
+    if r.status_code == 429:
+        raise GarminTooManyRequestsError("Mobile cffi MFA returned 429")
     if not r.ok:
         raise GarminConnectionError(f"MFA Verification failed: HTTP {r.status_code}")
     res = r.json()
@@ -545,6 +544,8 @@ def mobile_login_requests(
         params={"clientId": MOBILE_SSO_CLIENT_ID, "service": MOBILE_SSO_SERVICE_URL},
         timeout=30,
     )
+    if get_resp.status_code == 429:
+        raise GarminTooManyRequestsError("Mobile login GET returned 429")
     if not get_resp.ok:
         raise GarminConnectionError(f"Mobile login GET failed: {get_resp.status_code}")
 
@@ -567,6 +568,8 @@ def mobile_login_requests(
         },
         timeout=30,
     )
+    if r.status_code == 429:
+        raise GarminTooManyRequestsError("Too many requests during mobile login")
     if not r.ok:
         raise GarminConnectionError(f"Login failed: {r.status_code}")
 
@@ -611,6 +614,8 @@ def complete_mfa_mobile_requests(client: Any, mfa_code: str) -> None:
         },
         timeout=30,
     )
+    if r.status_code == 429:
+        raise GarminTooManyRequestsError("Mobile requests MFA returned 429")
     if not r.ok:
         raise GarminConnectionError(f"MFA Verification failed: {r.status_code}")
     res = r.json()

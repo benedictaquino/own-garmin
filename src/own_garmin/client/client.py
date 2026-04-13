@@ -113,7 +113,7 @@ class GarminClient:
 
             if result and result[0] == "needs_mfa":
                 mfa_code = input("\nEnter Garmin MFA code: ")
-                self._resume_login_chain(result[1], mfa_code)
+                self._resume_login_chain(mfa_code)
 
             self._dump_tokens(self._tokenstore_path)
             _LOGGER.info(
@@ -277,9 +277,7 @@ class GarminClient:
             f"All login strategies failed. Last error: {last_err}"
         )
 
-    def _resume_login_chain(
-        self, _client_state: Any, mfa_code: str
-    ) -> tuple[str | None, Any]:
+    def _resume_login_chain(self, mfa_code: str) -> None:
         if self._pending_mfa == "widget":
             ticket = strategies.complete_mfa_widget(self, mfa_code)
             self._establish_session(ticket, service_url=f"{self._sso}/sso/embed")
@@ -294,7 +292,6 @@ class GarminClient:
 
         self._pending_mfa = None
         self._load_profile()
-        return None, None
 
     # ------------------------------------------------------------------
     # Session establishment + DI token exchange

@@ -60,7 +60,6 @@ LOGIN_DELAY_MAX_S = 45.0
 # --------------------------------------------------------------------------------------
 
 SOCIAL_PROFILE_URL = "/userprofile-service/socialProfile"
-USER_SETTINGS_URL = "/userprofile-service/userprofile/user-settings"
 
 # Activities
 ACTIVITIES_URL = "/activitylist-service/activities/search/activities"
