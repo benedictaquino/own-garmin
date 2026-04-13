@@ -1,8 +1,10 @@
 import base64
+import io
 import json
 import logging
 import os
 import time
+import zipfile
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
@@ -33,6 +35,7 @@ from . import strategies
 from .constants import (
     ACTIVITIES_URL,
     ACTIVITY_DETAILS_URL,
+    ACTIVITY_FIT_URL,
     ACTIVITY_URL,
     DI_CLIENT_IDS,
     DI_GRANT_TYPE,
@@ -148,6 +151,33 @@ class GarminClient:
         path = ACTIVITY_DETAILS_URL.format(activity_id=activity_id)
         params = {"maxChartSize": max_chart, "maxPolylineSize": max_poly}
         return self._connectapi(path, params=params)
+
+    def download_fit(self, activity_id: int) -> bytes:
+        """
+        Download the FIT file for an activity and return its raw bytes.
+
+        The download service wraps the FIT file in a ZIP archive. This method
+        extracts and returns the first file inside that archive.
+
+        :param activity_id: Garmin activity ID.
+        :returns: Raw FIT file bytes.
+        :raises GarminConnectionError: If the ZIP contains no files or the
+            response body is not a valid ZIP archive.
+        """
+        path = ACTIVITY_FIT_URL.format(activity_id=activity_id)
+        resp = self._request("GET", path)
+        try:
+            with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+                names = zf.namelist()
+                if not names:
+                    raise GarminConnectionError(
+                        f"FIT zip for activity {activity_id} contained no files"
+                    )
+                return zf.read(names[0])
+        except zipfile.BadZipFile as exc:
+            raise GarminConnectionError(
+                f"FIT response for activity {activity_id} is not a valid ZIP"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Persistence Handlers

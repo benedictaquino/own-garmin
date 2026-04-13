@@ -65,6 +65,7 @@ SOCIAL_PROFILE_URL = "/userprofile-service/socialProfile"
 ACTIVITIES_URL = "/activitylist-service/activities/search/activities"
 ACTIVITY_URL = "/activity-service/activity"
 ACTIVITY_DETAILS_URL = "/activity-service/activity/{activity_id}/details"
+ACTIVITY_FIT_URL = "/download-service/files/activity/{activity_id}"
 
 # --------------------------------------------------------------------------------------
 # HELPER FUNCTIONS
