@@ -2,7 +2,7 @@ import logging
 import random
 import re
 import time
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable
 
 import requests
 
@@ -21,7 +21,7 @@ from .constants import (
     MOBILE_SSO_USER_AGENT,
     PORTAL_SSO_CLIENT_ID,
     PORTAL_SSO_SERVICE_URL,
-    _random_browser_headers,
+    _browser_headers,
 )
 from .exceptions import (
     GarminAuthenticationError,
@@ -45,9 +45,9 @@ def widget_login_cffi(
     client: Any,
     email: str,
     password: str,
-    prompt_mfa: Optional[Callable[[], str]] = None,
+    prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> Tuple[Optional[str], Any]:
+) -> tuple[str | None, Any]:
     if not HAS_CFFI:
         raise GarminConnectionError("curl_cffi not installed; widget+cffi unavailable")
 
@@ -120,7 +120,7 @@ def widget_login_cffi(
         if prompt_mfa:
             mfa_code = prompt_mfa()
             ticket = complete_mfa_widget(client, mfa_code)
-            client._establish_session(ticket, sess=sess, service_url=sso_embed)
+            client._establish_session(ticket, service_url=sso_embed)
             return None, None
         raise GarminAuthenticationError(
             "MFA Required but no prompt_mfa mechanism supplied"
@@ -141,7 +141,7 @@ def widget_login_cffi(
         raise GarminConnectionError(
             "Widget login: could not find service ticket in response"
         )
-    client._establish_session(ticket_match.group(1), sess=sess, service_url=sso_embed)
+    client._establish_session(ticket_match.group(1), service_url=sso_embed)
     return None, None
 
 
@@ -191,15 +191,15 @@ def portal_web_login_cffi(
     client: Any,
     email: str,
     password: str,
-    prompt_mfa: Optional[Callable[[], str]] = None,
+    prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> Tuple[Optional[str], Any]:
+) -> tuple[str | None, Any]:
     if not HAS_CFFI:
         raise GarminConnectionError("curl_cffi not installed; portal+cffi unavailable")
 
     impersonations = ["safari", "safari_ios", "chrome120", "edge101", "chrome"]
-    last_err: Optional[Exception] = None
-    last_429: Optional[GarminTooManyRequestsError] = None
+    last_err: Exception | None = None
+    last_429: GarminTooManyRequestsError | None = None
     rate_limited_count = 0
     for imp in impersonations:
         try:
@@ -237,9 +237,9 @@ def portal_web_login_requests(
     client: Any,
     email: str,
     password: str,
-    prompt_mfa: Optional[Callable[[], str]] = None,
+    prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> Tuple[Optional[str], Any]:
+) -> tuple[str | None, Any]:
     sess = requests.Session()
     return _portal_web_login(
         client,
@@ -256,11 +256,11 @@ def _portal_web_login(
     sess: Any,
     email: str,
     password: str,
-    prompt_mfa: Optional[Callable[[], str]] = None,
+    prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> Tuple[Optional[str], Any]:
+) -> tuple[str | None, Any]:
     signin_url = f"{client._sso}/portal/sso/en-US/sign-in"
-    browser_hdrs = _random_browser_headers()
+    browser_hdrs = _browser_headers()
 
     get_resp = sess.get(
         signin_url,
@@ -347,7 +347,7 @@ def _portal_web_login(
 
     if resp_type == "SUCCESSFUL":
         ticket = res["serviceTicketId"]
-        client._establish_session(ticket, sess=sess, service_url=PORTAL_SSO_SERVICE_URL)
+        client._establish_session(ticket, service_url=PORTAL_SSO_SERVICE_URL)
         return None, None
 
     if resp_type == "INVALID_USERNAME_PASSWORD":
@@ -401,7 +401,7 @@ def complete_mfa_portal_web(client: Any, mfa_code: str) -> None:
                     if "/portal/" in mfa_url
                     else MOBILE_SSO_SERVICE_URL
                 )
-                client._establish_session(ticket, sess=sess, service_url=svc_url)
+                client._establish_session(ticket, service_url=svc_url)
                 return
             failures.append(f"{mfa_url}: {res}")
         except Exception as e:
@@ -419,9 +419,9 @@ def mobile_login_cffi(
     client: Any,
     email: str,
     password: str,
-    prompt_mfa: Optional[Callable[[], str]] = None,
+    prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> Tuple[Optional[str], Any]:
+) -> tuple[str | None, Any]:
     if not HAS_CFFI:
         raise GarminConnectionError("curl_cffi not installed; mobile+cffi unavailable")
 
@@ -498,7 +498,7 @@ def mobile_login_cffi(
 
     if resp_type == "SUCCESSFUL":
         ticket = res["serviceTicketId"]
-        client._establish_session(ticket, sess=sess)
+        client._establish_session(ticket)
         return None, None
 
     if resp_type == "INVALID_USERNAME_PASSWORD":
@@ -526,7 +526,7 @@ def complete_mfa_mobile_cffi(client: Any, mfa_code: str) -> None:
     res = r.json()
     if res.get("responseStatus", {}).get("type") == "SUCCESSFUL":
         ticket = res["serviceTicketId"]
-        client._establish_session(ticket, sess=sess)
+        client._establish_session(ticket)
         return
     raise GarminAuthenticationError(f"MFA Verification failed: {res}")
 
@@ -535,9 +535,9 @@ def mobile_login_requests(
     client: Any,
     email: str,
     password: str,
-    prompt_mfa: Optional[Callable[[], str]] = None,
+    prompt_mfa: Callable[[], str] | None = None,
     return_on_mfa: bool = False,
-) -> Tuple[Optional[str], Any]:
+) -> tuple[str | None, Any]:
     sess = requests.Session()
     sess.headers.update({"User-Agent": MOBILE_SSO_USER_AGENT})
     get_resp = sess.get(

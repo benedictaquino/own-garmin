@@ -1,5 +1,4 @@
 import base64
-from typing import Dict, Optional
 
 # --------------------------------------------------------------------------------------
 # SSO ENDPOINTS AND CLIENT IDENTIFIERS
@@ -73,8 +72,8 @@ ACTIVITY_DETAILS_URL = "/activity-service/activity/{activity_id}/details"
 # --------------------------------------------------------------------------------------
 
 
-def _random_browser_headers() -> Dict[str, str]:
-    """Generate a random browser User-Agent header."""
+def _browser_headers() -> dict[str, str]:
+    """Return standard desktop browser User-Agent header."""
     return {"User-Agent": DESKTOP_USER_AGENT}
 
 
@@ -83,9 +82,9 @@ def _build_basic_auth(client_id: str) -> str:
     return "Basic " + base64.b64encode(f"{client_id}:".encode()).decode()
 
 
-def _native_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def _native_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
     """Headers for native (Android app) API calls and DI token exchange."""
-    headers: Dict[str, str] = {
+    headers: dict[str, str] = {
         "User-Agent": NATIVE_API_USER_AGENT,
         "X-Garmin-User-Agent": NATIVE_X_GARMIN_USER_AGENT,
         "X-Garmin-Paired-App-Version": "10861",

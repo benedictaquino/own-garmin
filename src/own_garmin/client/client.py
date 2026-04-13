@@ -5,7 +5,7 @@ import os
 import time
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable
 
 import requests
 
@@ -19,7 +19,7 @@ except ImportError:
     _CffiRequestException = None  # type: ignore[assignment,misc]
 
 if HAS_CFFI:
-    _TRANSPORT_EXCEPTIONS: Tuple[type, ...] = (
+    _TRANSPORT_EXCEPTIONS: tuple[type, ...] = (
         requests.RequestException,
         _CffiRequestException,
     )
@@ -31,9 +31,13 @@ from own_garmin import paths
 
 from . import strategies
 from .constants import (
+    ACTIVITIES_URL,
+    ACTIVITY_DETAILS_URL,
+    ACTIVITY_URL,
     DI_CLIENT_IDS,
     DI_GRANT_TYPE,
     DI_TOKEN_URL,
+    LOGIN_DELAY_MAX_S,
     MOBILE_SSO_SERVICE_URL,
     SOCIAL_PROFILE_URL,
     _build_basic_auth,
@@ -61,17 +65,17 @@ class GarminClient:
         self._connectapi_url = f"https://connectapi.{self.domain}"
 
         # DI Bearer tokens
-        self.di_token: Optional[str] = None
-        self.di_refresh_token: Optional[str] = None
-        self.di_client_id: Optional[str] = None
+        self.di_token: str | None = None
+        self.di_refresh_token: str | None = None
+        self.di_client_id: str | None = None
 
-        self.display_name: Optional[str] = None
-        self.full_name: Optional[str] = None
+        self.display_name: str | None = None
+        self.full_name: str | None = None
 
-        self._api_session: Optional[requests.Session] = None
+        self._api_session: requests.Session | None = None
         self._pool_connections: int = 20
         self._pool_maxsize: int = 20
-        self._pending_mfa: Optional[str] = None
+        self._pending_mfa: str | None = None
 
         self.session_dir = Path(paths.session_dir())
         self.session_dir.mkdir(parents=True, exist_ok=True)
@@ -123,15 +127,13 @@ class GarminClient:
     def list_activities(self, start: date, end: date) -> list[dict]:
         """Fetch summary dicts of activities within a date range."""
         path = (
-            "/activitylist-service/activities/search/activities?"
-            f"startDate={start.isoformat()}&endDate={end.isoformat()}"
+            f"{ACTIVITIES_URL}?startDate={start.isoformat()}&endDate={end.isoformat()}"
         )
         return self._connectapi(path)
 
     def get_activity(self, activity_id: int) -> dict:
         """Fetch the full summary dictionary for a specific activity."""
-        path = f"/activity-service/activity/{activity_id}"
-        return self._connectapi(path)
+        return self._connectapi(f"{ACTIVITY_URL}/{activity_id}")
 
     def get_activity_details(
         self, activity_id: int, max_chart: int = 99999, max_poly: int = 99999
@@ -143,7 +145,7 @@ class GarminClient:
         :param max_chart: Max number of data points for charts (e.g., HR, pace).
         :param max_poly: Max number of points for the GPS polyline.
         """
-        path = f"/activity-service/activity/{activity_id}/details"
+        path = ACTIVITY_DETAILS_URL.format(activity_id=activity_id)
         params = {"maxChartSize": max_chart, "maxPolylineSize": max_poly}
         return self._connectapi(path, params=params)
 
@@ -181,7 +183,7 @@ class GarminClient:
     def is_authenticated(self) -> bool:
         return bool(self.di_token)
 
-    def get_api_headers(self) -> Dict[str, str]:
+    def get_api_headers(self) -> dict[str, str]:
         if not self.is_authenticated:
             raise GarminAuthenticationError("Not authenticated")
         return _native_headers(
@@ -199,11 +201,11 @@ class GarminClient:
         self,
         email: str,
         password: str,
-        prompt_mfa: Optional[Callable[[], str]] = None,
+        prompt_mfa: Callable[[], str] | None = None,
         return_on_mfa: bool = False,
-    ) -> Tuple[Optional[str], Any]:
+    ) -> tuple[str | None, Any]:
         """Runs the 5-strategy Cloudflare evasion chain."""
-        strategy_chain: List[Tuple[str, Callable[..., Tuple[Optional[str], Any]]]] = []
+        strategy_chain: list[tuple[str, Callable[..., tuple[str | None, Any]]]] = []
 
         if HAS_CFFI:
             strategy_chain.append(
@@ -239,7 +241,12 @@ class GarminClient:
                 )
             )
 
-        last_err: Optional[Exception] = None
+        _LOGGER.warning(
+            "Starting login chain. Each strategy may sleep up to %.0fs for Cloudflare "
+            "evasion — total login may take several minutes.",
+            LOGIN_DELAY_MAX_S,
+        )
+        last_err: Exception | None = None
         for name, method in strategy_chain:
             try:
                 _LOGGER.info("Trying login strategy: %s", name)
@@ -272,12 +279,10 @@ class GarminClient:
 
     def _resume_login_chain(
         self, _client_state: Any, mfa_code: str
-    ) -> Tuple[Optional[str], Any]:
+    ) -> tuple[str | None, Any]:
         if self._pending_mfa == "widget":
             ticket = strategies.complete_mfa_widget(self, mfa_code)
-            self._establish_session(
-                ticket, sess=self._widget_session, service_url=f"{self._sso}/sso/embed"
-            )
+            self._establish_session(ticket, service_url=f"{self._sso}/sso/embed")
         elif self._pending_mfa == "portal_web":
             strategies.complete_mfa_portal_web(self, mfa_code)
         elif self._pending_mfa == "mobile_cffi":
@@ -295,10 +300,7 @@ class GarminClient:
     # Session establishment + DI token exchange
     # ------------------------------------------------------------------
 
-    def _establish_session(
-        self, ticket: str, sess: Any = None, service_url: Optional[str] = None
-    ) -> None:
-        del sess
+    def _establish_session(self, ticket: str, service_url: str | None = None) -> None:
         self._exchange_service_ticket(ticket, service_url=service_url)
 
     @staticmethod
@@ -310,14 +312,14 @@ class GarminClient:
         return requests.post(url, **kwargs)
 
     def _exchange_service_ticket(
-        self, ticket: str, service_url: Optional[str] = None
+        self, ticket: str, service_url: str | None = None
     ) -> None:
         svc_url = service_url or MOBILE_SSO_SERVICE_URL
         di_token = None
         di_refresh = None
         di_client_id = None
-        last_transport_error: Optional[Exception] = None
-        last_server_error: Optional[tuple] = None
+        last_transport_error: Exception | None = None
+        last_server_error: tuple | None = None
         had_auth_failure = False
 
         for client_id in DI_CLIENT_IDS:
@@ -425,7 +427,7 @@ class GarminClient:
         )
 
     @staticmethod
-    def _extract_client_id_from_jwt(token: str) -> Optional[str]:
+    def _extract_client_id_from_jwt(token: str) -> str | None:
         try:
             parts = token.split(".")
             if len(parts) < 2:
@@ -514,6 +516,10 @@ class GarminClient:
             resp = self._api_session.request(method, url, headers=merged, **kwargs)
             if resp.status_code == 401:
                 raise GarminAuthenticationError("Token expired and refresh failed.")
+            if not resp.ok:
+                raise GarminConnectionError(
+                    f"API Error {resp.status_code}: {resp.text[:100]}"
+                )
         elif not resp.ok:
             raise GarminConnectionError(
                 f"API Error {resp.status_code}: {resp.text[:100]}"
