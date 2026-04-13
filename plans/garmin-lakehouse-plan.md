@@ -67,7 +67,7 @@ Dev:
   - Load existing tokens
   - Check JWT expirty; if <15 minutes remaining, use `refresh_token`
   - If refresh fails or tokens missing, trigger _login_chain from strategies.py
-- Expose thin methods used by bronze: `list_activities(start, end)`, `get_activity(activity_id)`.
+- Expose thin methods used by bronze: `list_activities(start, end)`, `get_activity(activity_id)`, `download_fit(activity_id)`.
 - Credentials read from env (`GARMIN_EMAIL`, `GARMIN_PASSWORD`) via `python-dotenv`.
 
 ### `paths.py` — URI builders

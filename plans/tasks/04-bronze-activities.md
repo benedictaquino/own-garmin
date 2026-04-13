@@ -85,7 +85,7 @@ def ingest(client: GarminClient, since: date, until: date, sleep_sec: float = 0.
 
 ## Notes
 
-- **Authentication**: `GarminClient` is pre-authenticated before being passed to any ingest function.
-- Preserve all raw data exactly as returned from Garmin — bronze is immutable and unprocessed.
-- Sleep values are configurable; defaults are conservative (0.5s) to avoid rate-limits.
-- If an activity is missing expected fields (e.g., no `activityId`), log a warning and skip rather than raising.
+- **Authentication**: `GarminClient` handles the 5-strategy login chain and MFA prompts automatically on instantiation. The `ingest` function should receive an already-authenticated client.
+- Do not transform fields here — preserve Garmin's raw shape exactly. That is the whole point of the bronze layer.
+- Sleep between detail calls is the only rate-limit lever; keep it configurable but default conservative (0.5s).
+- If `list_activities` returns a summary missing `activityId`, log and skip rather than raising.
