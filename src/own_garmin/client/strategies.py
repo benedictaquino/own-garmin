@@ -1,11 +1,13 @@
 import logging
 import random
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import requests
 
 from .constants import (
+    BROWSER_HEADERS,
     HAS_CFFI,
     LOGIN_DELAY_MAX_S,
     LOGIN_DELAY_MIN_S,
@@ -14,7 +16,6 @@ from .constants import (
     MOBILE_SSO_USER_AGENT,
     PORTAL_SSO_CLIENT_ID,
     PORTAL_SSO_SERVICE_URL,
-    _browser_headers,
     cffi_requests,
 )
 from .exceptions import (
@@ -31,7 +32,7 @@ type StrategyResult = tuple[str | None, Any]
 # Matches name="csrf" / name='_csrf' with independent quote styles on value=
 _CSRF_RE = re.compile(r'name=["\']_?csrf["\']\s+value=(["\'])(.+?)\1')
 _TITLE_RE = re.compile(r"<title>(.+?)</title>")
-_TICKET_RE = re.compile(r'embed\?ticket=([^"]+)"')
+_TICKET_RE = re.compile(r"""embed\?ticket=([^"']+)["']""")
 
 # --------------------------------------------------------------------------------------
 # SSO EMBED WIDGET LOGIN
@@ -257,13 +258,11 @@ def _portal_web_login(
     return_on_mfa: bool = False,
 ) -> StrategyResult:
     signin_url = f"{client._sso}/portal/sso/en-US/sign-in"
-    browser_hdrs = _browser_headers()
-
     get_resp = sess.get(
         signin_url,
         params={"clientId": PORTAL_SSO_CLIENT_ID, "service": PORTAL_SSO_SERVICE_URL},
         headers={
-            **browser_hdrs,
+            **BROWSER_HEADERS,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
         timeout=30,
@@ -288,7 +287,7 @@ def _portal_web_login(
         "service": PORTAL_SSO_SERVICE_URL,
     }
     post_headers = {
-        **browser_hdrs,
+        **BROWSER_HEADERS,
         "Accept": "application/json, text/plain, */*",
         "Content-Type": "application/json",
         "Origin": client._sso,
@@ -376,6 +375,7 @@ def complete_mfa_portal_web(client: Any, mfa_code: str) -> None:
     ]
 
     failures = []
+    last_exc: Exception | None = None
     for mfa_url, params, headers in mfa_endpoints:
         try:
             r = sess.post(
@@ -400,8 +400,11 @@ def complete_mfa_portal_web(client: Any, mfa_code: str) -> None:
             failures.append(f"{mfa_url}: {res}")
         except Exception as e:
             failures.append(f"{mfa_url}: {e}")
+            last_exc = e
 
-    raise GarminAuthenticationError(f"MFA Verification failed: {failures}")
+    raise GarminAuthenticationError(
+        f"MFA Verification failed: {failures}"
+    ) from last_exc
 
 
 # --------------------------------------------------------------------------------------

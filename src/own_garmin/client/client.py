@@ -6,9 +6,10 @@ import os
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -217,7 +218,7 @@ class GarminClient:
     # ------------------------------------------------------------------
 
     def _load_tokens(self, path: str) -> None:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         self.di_token = data.get("di_token")
         self.di_refresh_token = data.get("di_refresh_token")
@@ -376,7 +377,7 @@ class GarminClient:
         self._exchange_service_ticket(ticket, service_url=service_url)
 
     @staticmethod
-    def _http_post(url: str, **kwargs: Any) -> Any:
+    def _di_post(url: str, **kwargs: Any) -> Any:
         if HAS_CFFI:
             # Always use curl_cffi for DI token exchange to avoid Cloudflare blocks
             # on the diauth endpoints.
@@ -396,7 +397,7 @@ class GarminClient:
 
         for client_id in DI_CLIENT_IDS:
             try:
-                r = self._http_post(
+                r = self._di_post(
                     DI_TOKEN_URL,
                     headers=_native_headers(
                         {
@@ -462,7 +463,7 @@ class GarminClient:
         if not self.di_refresh_token or not self.di_client_id:
             raise GarminAuthenticationError("No DI refresh token available")
         try:
-            r = self._http_post(
+            r = self._di_post(
                 DI_TOKEN_URL,
                 headers=_native_headers(
                     {
@@ -506,7 +507,8 @@ class GarminClient:
                 return None
             payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
             return json.loads(base64.urlsafe_b64decode(payload_b64).decode())
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("Failed to decode JWT payload: %s", e)
             return None
 
     @staticmethod
@@ -571,7 +573,7 @@ class GarminClient:
         if "Authorization" in custom_headers:
             raise ValueError(
                 "_request does not allow overriding the Authorization header; "
-                "use _http_post directly for non-DI requests."
+                "use _di_post directly for non-DI requests."
             )
 
         merged = self.get_api_headers()

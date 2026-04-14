@@ -90,9 +90,7 @@ ACTIVITY_FIT_URL = "/download-service/files/activity/{activity_id}"
 # --------------------------------------------------------------------------------------
 
 
-def _browser_headers() -> dict[str, str]:
-    """Return standard desktop browser User-Agent header."""
-    return {"User-Agent": DESKTOP_USER_AGENT}
+BROWSER_HEADERS: dict[str, str] = {"User-Agent": DESKTOP_USER_AGENT}
 
 
 def _build_basic_auth(client_id: str) -> str:

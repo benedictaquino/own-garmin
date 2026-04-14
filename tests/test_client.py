@@ -376,7 +376,7 @@ def test_refresh_di_token_updates_fields(authenticated_client, mocker):
         "access_token": "new_access_token",
         "refresh_token": "new_refresh_token",
     }
-    mocker.patch.object(GarminClient, "_http_post", return_value=mock_resp)
+    mocker.patch.object(GarminClient, "_di_post", return_value=mock_resp)
 
     authenticated_client.di_client_id = "mock_client_id"
     authenticated_client.di_refresh_token = "old_refresh"
@@ -391,7 +391,7 @@ def test_refresh_di_token_429_raises(authenticated_client, mocker):
     mock_resp = MagicMock()
     mock_resp.status_code = 429
     mock_resp.ok = False
-    mocker.patch.object(GarminClient, "_http_post", return_value=mock_resp)
+    mocker.patch.object(GarminClient, "_di_post", return_value=mock_resp)
 
     authenticated_client.di_client_id = "mock_client_id"
     authenticated_client.di_refresh_token = "old_refresh"
@@ -421,7 +421,7 @@ def test_exchange_service_ticket_rotates_client_ids(authenticated_client, mocker
     }
 
     mock_post = mocker.patch.object(
-        GarminClient, "_http_post", side_effect=[first_resp, second_resp]
+        GarminClient, "_di_post", side_effect=[first_resp, second_resp]
     )
 
     authenticated_client._exchange_service_ticket("dummy_ticket")
@@ -440,7 +440,7 @@ def test_exchange_service_ticket_all_fail_raises(authenticated_client, mocker):
     from own_garmin.client.constants import DI_CLIENT_IDS
 
     mocker.patch.object(
-        GarminClient, "_http_post", side_effect=[bad_resp] * len(DI_CLIENT_IDS)
+        GarminClient, "_di_post", side_effect=[bad_resp] * len(DI_CLIENT_IDS)
     )
 
     with pytest.raises(GarminAuthenticationError):
@@ -490,10 +490,16 @@ def test_title_re_no_match():
     assert _TITLE_RE.search("<p>no title here</p>") is None
 
 
-def test_ticket_re_extracts_ticket():
+def test_ticket_re_extracts_ticket_double_quote():
     html = 'src="https://sso.garmin.com/sso/embed?ticket=ST-1234567-abcdef"'
     m = _TICKET_RE.search(html)
     assert m and m.group(1) == "ST-1234567-abcdef"
+
+
+def test_ticket_re_extracts_ticket_single_quote():
+    html = "src='https://sso.garmin.com/sso/embed?ticket=ST-9999999-xyz'"
+    m = _TICKET_RE.search(html)
+    assert m and m.group(1) == "ST-9999999-xyz"
 
 
 def test_ticket_re_no_match():
