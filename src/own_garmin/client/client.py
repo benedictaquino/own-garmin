@@ -544,6 +544,8 @@ class GarminClient:
     # ------------------------------------------------------------------
 
     def _load_profile(self) -> None:
+        if self.display_name is not None:
+            return
         profile = self._connectapi(SOCIAL_PROFILE_URL)
         if not profile or "displayName" not in profile:
             raise GarminAuthenticationError("Profile response missing displayName")
@@ -566,6 +568,11 @@ class GarminClient:
         url = f"{self._connectapi_url}/{path.lstrip('/')}"
         kwargs.setdefault("timeout", 15)
         custom_headers = kwargs.pop("headers", {}) or {}
+        if "Authorization" in custom_headers:
+            raise ValueError(
+                "_request does not allow overriding the Authorization header; "
+                "use _http_post directly for non-DI requests."
+            )
 
         merged = self.get_api_headers()
         merged.update(custom_headers)
@@ -590,6 +597,10 @@ class GarminClient:
             merged = self.get_api_headers()
             merged.update(custom_headers)
             resp = self._api_session.request(method, url, headers=merged, **kwargs)
+            if resp.status_code == 429:
+                raise GarminTooManyRequestsError(
+                    "Garmin API Rate Limit (429) Reached on token refresh retry."
+                )
             if resp.status_code == 401:
                 raise GarminAuthenticationError("Token expired and refresh failed.")
             if not resp.ok:

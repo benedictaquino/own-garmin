@@ -56,6 +56,10 @@ DI_GRANT_TYPE = (
 )
 
 # Garmin rotates accepted DI client IDs each quarter.
+# To find new IDs: capture a fresh DI token exchange with a proxy (mitmproxy/Charles)
+# while the official Garmin Connect Mobile app logs in, then inspect the
+# Authorization: Basic <base64> header sent to diauth.garmin.com. The decoded
+# value is "<client_id>:" — add new IDs at the front of this tuple.
 DI_CLIENT_IDS = (
     "GARMIN_CONNECT_MOBILE_ANDROID_DI_2025Q2",
     "GARMIN_CONNECT_MOBILE_ANDROID_DI_2024Q4",

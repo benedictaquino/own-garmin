@@ -28,8 +28,8 @@ _LOGGER = logging.getLogger(__name__)
 # Type alias for login strategy function return values
 type StrategyResult = tuple[str | None, Any]
 
-# Merged flexible regex
-_CSRF_RE = re.compile(r'name=["\']_?csrf["\']\s+value=["\'](.+?)["\']')
+# Matches name="csrf" / name='_csrf' with independent quote styles on value=
+_CSRF_RE = re.compile(r'name=["\']_?csrf["\']\s+value=(["\'])(.+?)\1')
 _TITLE_RE = re.compile(r"<title>(.+?)</title>")
 _TICKET_RE = re.compile(r'embed\?ticket=([^"]+)"')
 
@@ -92,7 +92,7 @@ def widget_login_cffi(
             "username": email,
             "password": password,
             "embed": "true",
-            "_csrf": csrf_match.group(1),
+            "_csrf": csrf_match.group(2),
         },
         timeout=30,
     )
@@ -156,7 +156,7 @@ def complete_mfa_widget(client: Any, mfa_code: str) -> str:
         data={
             "mfa-code": mfa_code,
             "embed": "true",
-            "_csrf": csrf_match.group(1),
+            "_csrf": csrf_match.group(2),
             "fromPage": "setupEnterMfaCode",
         },
         timeout=30,

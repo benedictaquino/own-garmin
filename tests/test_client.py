@@ -315,6 +315,30 @@ def test_request_401_retry_non_ok_raises(authenticated_client, mocker):
         authenticated_client._request("GET", "/some/path")
 
 
+def test_request_401_retry_429_raises_too_many_requests(authenticated_client, mocker):
+    """A 429 on the 401 retry raises GarminTooManyRequestsError, not ConnectionError."""
+    first = MagicMock()
+    first.status_code = 401
+    second = MagicMock()
+    second.status_code = 429
+
+    authenticated_client._api_session = MagicMock()
+    authenticated_client._api_session.request.side_effect = [first, second]
+
+    mocker.patch.object(authenticated_client, "_refresh_session")
+
+    with pytest.raises(GarminTooManyRequestsError):
+        authenticated_client._request("GET", "/some/path")
+
+
+def test_request_raises_on_authorization_header_override(authenticated_client):
+    """Passing Authorization in custom headers raises ValueError."""
+    with pytest.raises(ValueError, match="Authorization"):
+        authenticated_client._request(
+            "GET", "/some/path", headers={"Authorization": "Bearer other"}
+        )
+
+
 # ---------------------------------------------------------------------------
 # Token refresh
 # ---------------------------------------------------------------------------
@@ -431,13 +455,19 @@ def test_exchange_service_ticket_all_fail_raises(authenticated_client, mocker):
 def test_csrf_re_double_quotes():
     html = '<input name="_csrf" value="abc123" />'
     m = _CSRF_RE.search(html)
-    assert m and m.group(1) == "abc123"
+    assert m and m.group(2) == "abc123"
 
 
 def test_csrf_re_single_quotes():
     html = "<input name='csrf' value='token456' />"
     m = _CSRF_RE.search(html)
-    assert m and m.group(1) == "token456"
+    assert m and m.group(2) == "token456"
+
+
+def test_csrf_re_mixed_quotes():
+    html = "<input name=\"_csrf\" value='xyz789' />"
+    m = _CSRF_RE.search(html)
+    assert m and m.group(2) == "xyz789"
 
 
 def test_csrf_re_no_match():
