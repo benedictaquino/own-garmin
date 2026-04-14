@@ -17,6 +17,13 @@ def bronze_path(category: str, day: date) -> str:
     return f"{root}/bronze/{category}/year={day:%Y}/month={day:%m}/day={day:%d}.json"
 
 
+def bronze_fit_path(activity_id: int, day: date) -> str:
+    root = data_root()
+    return (
+        f"{root}/bronze/fit/year={day:%Y}/month={day:%m}/day={day:%d}/{activity_id}.zip"
+    )
+
+
 def silver_path(category: str) -> str:
     return f"{data_root()}/silver/{category}"
 

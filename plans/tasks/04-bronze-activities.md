@@ -51,8 +51,8 @@ def ingest(client: GarminClient, since: date, until: date, sleep_sec: float = 0.
 3. Extract `startTimeLocal` from the main activity record to determine the day partition.
 4. `time.sleep(sleep_sec)` between requests.
 5. Group by day and write JSON files to `bronze_path("activity_details", day)`.
-6. Idempotent: skip if the target day file already exists.
-7. Return count of newly written day-files.
+6. Idempotent: load existing day file, merge by `activityId` (new wins), rewrite only if content changed. Always re-fetches details so updated records (e.g. corrected splits) are picked up on subsequent runs.
+7. Return count of day-files written or updated.
 
 ### `fit.py`
 
