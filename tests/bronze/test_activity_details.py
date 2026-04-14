@@ -39,26 +39,48 @@ def test_ingest_writes_details(tmp_path):
     assert count == 1
 
 
-def test_ingest_skips_existing_day(tmp_path):
+def test_ingest_merges_existing_day(tmp_path):
     client = MagicMock()
     client.list_activities.return_value = [
         make_activity(1, "2026-01-05 08:00:00"),
     ]
-    client.get_activity_details.return_value = {"activityId": 1}
 
-    # Pre-create the day file
     path = Path(tmp_path / "bronze/activity_details/year=2026/month=01/day=05.json")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps([{"activityId": 1}], indent=2))
+    path.write_text(json.dumps([{"activityId": 1, "splits": ["old"]}], indent=2))
+
+    client.get_activity_details.return_value = {"activityId": 1, "splits": ["new"]}
 
     with patch("time.sleep"):
         count = activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
 
-    client.get_activity_details.assert_not_called()
+    client.get_activity_details.assert_called_once_with(1)
+    data = json.loads(path.read_text())
+    assert data[0]["splits"] == ["new"]
+    assert count == 1
+
+
+def test_ingest_idempotent(tmp_path):
+    client = MagicMock()
+    client.list_activities.return_value = [
+        make_activity(1, "2026-01-05 08:00:00"),
+    ]
+    client.get_activity_details.return_value = {"activityId": 1, "splits": []}
+
+    with patch("time.sleep"):
+        activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+
+    path = Path(tmp_path / "bronze/activity_details/year=2026/month=01/day=05.json")
+    mtime_before = path.stat().st_mtime
+
+    with patch("time.sleep"):
+        count = activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+
+    assert path.stat().st_mtime == mtime_before  # file not rewritten
     assert count == 0
 
 
-def test_ingest_returns_newly_written_count(tmp_path):
+def test_ingest_returns_files_changed_count(tmp_path):
     client = MagicMock()
     client.list_activities.return_value = [
         make_activity(1, "2026-01-05 08:00:00"),

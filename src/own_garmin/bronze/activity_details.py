@@ -16,7 +16,7 @@ def ingest(
 ) -> int:
     """Fetch activity details (splits, laps, metrics), write to bronze.
 
-    Returns count of newly written day-files.
+    Returns count of day-files written or updated.
     """
     activities = client.list_activities(since, until)
 
@@ -37,22 +37,30 @@ def ingest(
             continue
         by_day[day].append(activity)
 
-    newly_written = 0
+    files_changed = 0
     first_request = True
     for day, day_activities in by_day.items():
         path = paths.bronze_path("activity_details", day)
-        if Path(path).exists():
-            continue
 
-        details = []
+        existing: dict[int, dict] = {}
+        if Path(path).exists():
+            with open(path) as f:
+                for record in json.load(f):
+                    if "activityId" in record:
+                        existing[record["activityId"]] = record
+
         for activity in day_activities:
             if not first_request:
                 time.sleep(sleep_sec)
             first_request = False
-            details.append(client.get_activity_details(activity["activityId"]))
+            detail = client.get_activity_details(activity["activityId"])
+            existing[activity["activityId"]] = detail  # new wins
 
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_text(json.dumps(details, indent=2))
-        newly_written += 1
+        merged = list(existing.values())
+        new_json = json.dumps(merged, indent=2)
+        if not Path(path).exists() or Path(path).read_text() != new_json:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text(new_json)
+            files_changed += 1
 
-    return newly_written
+    return files_changed
