@@ -1,7 +1,5 @@
 import json
-from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,13 +16,12 @@ def make_activity(activity_id: int, start_time: str, **extra) -> dict:
 
 
 def test_ingest_writes_json_array(tmp_path):
-    client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-        make_activity(2, "2026-01-05 10:00:00"),
-    ]
-
-    count = activities.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+    count = activities.ingest(
+        [
+            make_activity(1, "2026-01-05 08:00:00"),
+            make_activity(2, "2026-01-05 10:00:00"),
+        ]
+    )
 
     path = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
     assert path.exists()
@@ -35,14 +32,13 @@ def test_ingest_writes_json_array(tmp_path):
 
 
 def test_ingest_groups_by_day(tmp_path):
-    client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-        make_activity(2, "2026-01-06 09:00:00"),
-        make_activity(3, "2026-01-06 11:00:00"),
-    ]
-
-    count = activities.ingest(client, date(2026, 1, 5), date(2026, 1, 6))
+    count = activities.ingest(
+        [
+            make_activity(1, "2026-01-05 08:00:00"),
+            make_activity(2, "2026-01-06 09:00:00"),
+            make_activity(3, "2026-01-06 11:00:00"),
+        ]
+    )
 
     day5 = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
     day6 = Path(tmp_path / "bronze/activities/year=2026/month=01/day=06.json")
@@ -54,33 +50,23 @@ def test_ingest_groups_by_day(tmp_path):
 
 
 def test_ingest_idempotent(tmp_path):
-    client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-    ]
+    activity_list = [make_activity(1, "2026-01-05 08:00:00")]
 
-    activities.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+    activities.ingest(activity_list)
     path = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
     mtime_before = path.stat().st_mtime
 
-    activities.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+    count = activities.ingest(activity_list)
     mtime_after = path.stat().st_mtime
 
     assert mtime_before == mtime_after  # file not rewritten
     assert len(json.loads(path.read_text())) == 1
+    assert count == 1  # one valid input was processed
 
 
 def test_ingest_merge_new_wins(tmp_path):
-    client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00", name="old"),
-    ]
-    activities.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
-
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00", name="new"),
-    ]
-    activities.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+    activities.ingest([make_activity(1, "2026-01-05 08:00:00", name="old")])
+    activities.ingest([make_activity(1, "2026-01-05 08:00:00", name="new")])
 
     path = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
     data = json.loads(path.read_text())
@@ -89,13 +75,12 @@ def test_ingest_merge_new_wins(tmp_path):
 
 
 def test_ingest_skips_missing_activity_id(tmp_path):
-    client = MagicMock()
-    client.list_activities.return_value = [
-        {"startTimeLocal": "2026-01-05 08:00:00", "name": "no-id"},
-        make_activity(2, "2026-01-05 09:00:00"),
-    ]
-
-    count = activities.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+    count = activities.ingest(
+        [
+            {"startTimeLocal": "2026-01-05 08:00:00", "name": "no-id"},
+            make_activity(2, "2026-01-05 09:00:00"),
+        ]
+    )
 
     path = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
     data = json.loads(path.read_text())
@@ -104,25 +89,19 @@ def test_ingest_skips_missing_activity_id(tmp_path):
     assert count == 1
 
 
-def test_ingest_returns_count(tmp_path):
-    client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(10, "2026-01-05 08:00:00"),
-        make_activity(11, "2026-01-05 09:00:00"),
-        make_activity(12, "2026-01-06 10:00:00"),
-    ]
-
-    count = activities.ingest(client, date(2026, 1, 5), date(2026, 1, 6))
+def test_ingest_returns_count():
+    count = activities.ingest(
+        [
+            make_activity(10, "2026-01-05 08:00:00"),
+            make_activity(11, "2026-01-05 09:00:00"),
+            make_activity(12, "2026-01-06 10:00:00"),
+        ]
+    )
     assert count == 3
 
 
 def test_ingest_pretty_prints_json(tmp_path):
-    client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-    ]
-
-    activities.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+    activities.ingest([make_activity(1, "2026-01-05 08:00:00")])
 
     path = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
     text = path.read_text()

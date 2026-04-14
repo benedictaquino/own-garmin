@@ -1,5 +1,4 @@
 import json
-from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -19,17 +18,18 @@ def make_activity(activity_id: int, start_time: str) -> dict:
 
 def test_ingest_writes_details(tmp_path):
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-        make_activity(2, "2026-01-05 10:00:00"),
-    ]
     client.get_activity_details.side_effect = lambda aid: {
         "activityId": aid,
         "splits": [],
     }
 
+    activity_list = [
+        make_activity(1, "2026-01-05 08:00:00"),
+        make_activity(2, "2026-01-05 10:00:00"),
+    ]
+
     with patch("time.sleep"):
-        count = activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        count = activity_details.ingest(client, activity_list)
 
     path = Path(tmp_path / "bronze/activity_details/year=2026/month=01/day=05.json")
     assert path.exists()
@@ -41,18 +41,16 @@ def test_ingest_writes_details(tmp_path):
 
 def test_ingest_merges_existing_day(tmp_path):
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-    ]
+    client.get_activity_details.return_value = {"activityId": 1, "splits": ["new"]}
 
     path = Path(tmp_path / "bronze/activity_details/year=2026/month=01/day=05.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([{"activityId": 1, "splits": ["old"]}], indent=2))
 
-    client.get_activity_details.return_value = {"activityId": 1, "splits": ["new"]}
-
     with patch("time.sleep"):
-        count = activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        count = activity_details.ingest(
+            client, [make_activity(1, "2026-01-05 08:00:00")]
+        )
 
     client.get_activity_details.assert_called_once_with(1)
     data = json.loads(path.read_text())
@@ -62,50 +60,51 @@ def test_ingest_merges_existing_day(tmp_path):
 
 def test_ingest_idempotent(tmp_path):
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-    ]
     client.get_activity_details.return_value = {"activityId": 1, "splits": []}
+    activity_list = [make_activity(1, "2026-01-05 08:00:00")]
 
     with patch("time.sleep"):
-        activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        activity_details.ingest(client, activity_list)
 
     path = Path(tmp_path / "bronze/activity_details/year=2026/month=01/day=05.json")
     mtime_before = path.stat().st_mtime
 
     with patch("time.sleep"):
-        count = activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        count = activity_details.ingest(client, activity_list)
 
     assert path.stat().st_mtime == mtime_before  # file not rewritten
     assert count == 0
 
 
-def test_ingest_returns_files_changed_count(tmp_path):
+def test_ingest_returns_files_changed_count():
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-        make_activity(2, "2026-01-06 09:00:00"),
-    ]
     client.get_activity_details.side_effect = lambda aid: {"activityId": aid}
 
     with patch("time.sleep"):
-        count = activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 6))
+        count = activity_details.ingest(
+            client,
+            [
+                make_activity(1, "2026-01-05 08:00:00"),
+                make_activity(2, "2026-01-06 09:00:00"),
+            ],
+        )
 
     assert count == 2
 
 
-def test_ingest_sleeps_between_calls(tmp_path):
+def test_ingest_sleeps_between_calls():
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-        make_activity(2, "2026-01-05 09:00:00"),
-        make_activity(3, "2026-01-05 10:00:00"),
-    ]
     client.get_activity_details.side_effect = lambda aid: {"activityId": aid}
 
     with patch("own_garmin.bronze.activity_details.time") as mock_time:
         activity_details.ingest(
-            client, date(2026, 1, 5), date(2026, 1, 5), sleep_sec=1.0
+            client,
+            [
+                make_activity(1, "2026-01-05 08:00:00"),
+                make_activity(2, "2026-01-05 09:00:00"),
+                make_activity(3, "2026-01-05 10:00:00"),
+            ],
+            sleep_sec=1.0,
         )
 
     # sleep called between requests: 3 activities → 2 sleeps
@@ -113,16 +112,18 @@ def test_ingest_sleeps_between_calls(tmp_path):
     mock_time.sleep.assert_called_with(1.0)
 
 
-def test_ingest_skips_missing_activity_id(tmp_path):
+def test_ingest_skips_missing_activity_id():
     client = MagicMock()
-    client.list_activities.return_value = [
-        {"startTimeLocal": "2026-01-05 08:00:00"},  # no activityId
-        make_activity(2, "2026-01-05 09:00:00"),
-    ]
     client.get_activity_details.return_value = {"activityId": 2}
 
     with patch("time.sleep"):
-        count = activity_details.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        count = activity_details.ingest(
+            client,
+            [
+                {"startTimeLocal": "2026-01-05 08:00:00"},  # no activityId
+                make_activity(2, "2026-01-05 09:00:00"),
+            ],
+        )
 
     assert client.get_activity_details.call_count == 1
     assert count == 1

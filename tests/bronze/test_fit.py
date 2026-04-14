@@ -1,4 +1,3 @@
-from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,13 +17,10 @@ def make_activity(activity_id: int, start_time: str) -> dict:
 
 def test_ingest_writes_zip(tmp_path):
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(42, "2026-01-05 08:00:00"),
-    ]
     client.download_fit.return_value = b"PK\x03\x04fake_zip_content"
 
     with patch("time.sleep"):
-        count = fit.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        count = fit.ingest(client, [make_activity(42, "2026-01-05 08:00:00")])
 
     path = Path(tmp_path / "bronze/fit/year=2026/month=01/day=05/42.zip")
     assert path.exists()
@@ -34,48 +30,49 @@ def test_ingest_writes_zip(tmp_path):
 
 def test_ingest_skips_existing_zip(tmp_path):
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(42, "2026-01-05 08:00:00"),
-    ]
 
-    # Pre-create the ZIP file
     path = Path(tmp_path / "bronze/fit/year=2026/month=01/day=05/42.zip")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"existing")
 
     with patch("time.sleep"):
-        count = fit.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        count = fit.ingest(client, [make_activity(42, "2026-01-05 08:00:00")])
 
     client.download_fit.assert_not_called()
     assert count == 0
 
 
-def test_ingest_returns_newly_written_count(tmp_path):
+def test_ingest_returns_newly_written_count():
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-        make_activity(2, "2026-01-06 09:00:00"),
-        make_activity(3, "2026-01-06 10:00:00"),
-    ]
     client.download_fit.return_value = b"zip"
 
     with patch("time.sleep"):
-        count = fit.ingest(client, date(2026, 1, 5), date(2026, 1, 6))
+        count = fit.ingest(
+            client,
+            [
+                make_activity(1, "2026-01-05 08:00:00"),
+                make_activity(2, "2026-01-06 09:00:00"),
+                make_activity(3, "2026-01-06 10:00:00"),
+            ],
+        )
 
     assert count == 3
 
 
-def test_ingest_sleeps_between_downloads(tmp_path):
+def test_ingest_sleeps_between_downloads():
     client = MagicMock()
-    client.list_activities.return_value = [
-        make_activity(1, "2026-01-05 08:00:00"),
-        make_activity(2, "2026-01-05 09:00:00"),
-        make_activity(3, "2026-01-05 10:00:00"),
-    ]
     client.download_fit.return_value = b"zip"
 
     with patch("own_garmin.bronze.fit.time") as mock_time:
-        fit.ingest(client, date(2026, 1, 5), date(2026, 1, 5), sleep_sec=0.3)
+        fit.ingest(
+            client,
+            [
+                make_activity(1, "2026-01-05 08:00:00"),
+                make_activity(2, "2026-01-05 09:00:00"),
+                make_activity(3, "2026-01-05 10:00:00"),
+            ],
+            sleep_sec=0.3,
+        )
 
     # 3 downloads → 2 sleeps (no sleep before first)
     assert mock_time.sleep.call_count == 2
@@ -84,12 +81,12 @@ def test_ingest_sleeps_between_downloads(tmp_path):
 
 def test_ingest_skips_missing_activity_id():
     client = MagicMock()
-    client.list_activities.return_value = [
-        {"startTimeLocal": "2026-01-05 08:00:00"},  # no activityId
-    ]
 
     with patch("time.sleep"):
-        count = fit.ingest(client, date(2026, 1, 5), date(2026, 1, 5))
+        count = fit.ingest(
+            client,
+            [{"startTimeLocal": "2026-01-05 08:00:00"}],  # no activityId
+        )
 
     client.download_fit.assert_not_called()
     assert count == 0

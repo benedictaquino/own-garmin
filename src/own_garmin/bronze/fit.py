@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from own_garmin import paths
@@ -9,12 +9,12 @@ from own_garmin.client import GarminClient
 _LOGGER = logging.getLogger(__name__)
 
 
-def ingest(
-    client: GarminClient, since: date, until: date, sleep_sec: float = 0.5
-) -> int:
-    """Download FIT ZIPs, write to bronze. Returns count of ZIPs written."""
-    activities = client.list_activities(since, until)
+def ingest(client: GarminClient, activities: list[dict], sleep_sec: float = 0.5) -> int:
+    """Download FIT ZIPs, write to bronze. Returns count of ZIPs written.
 
+    Unlike the activity and detail modules, existing ZIPs are never
+    re-downloaded — FIT payloads are treated as immutable once stored.
+    """
     newly_written = 0
     first_request = True
     for activity in activities:

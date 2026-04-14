@@ -1,4 +1,4 @@
-import datetime
+from datetime import date
 
 import typer
 from dotenv import load_dotenv
@@ -24,18 +24,17 @@ def ingest(
     from own_garmin.bronze import activities, activity_details, fit
     from own_garmin.client import GarminClient
 
-    since_date = datetime.date.fromisoformat(since)
-    until_date = datetime.date.fromisoformat(until)
+    since_date = date.fromisoformat(since)
+    until_date = date.fromisoformat(until)
 
     client = GarminClient()
+    activity_list = client.list_activities(since_date, until_date)
 
-    n_activities = activities.ingest(client, since_date, until_date)
+    n_activities = activities.ingest(activity_list)
     typer.echo(f"Activities: {n_activities} written")
 
-    n_details = activity_details.ingest(
-        client, since_date, until_date, sleep_sec=sleep_sec
-    )
+    n_details = activity_details.ingest(client, activity_list, sleep_sec=sleep_sec)
     typer.echo(f"Activity details: {n_details} day-files written")
 
-    n_fit = fit.ingest(client, since_date, until_date, sleep_sec=sleep_sec)
+    n_fit = fit.ingest(client, activity_list, sleep_sec=sleep_sec)
     typer.echo(f"FIT files: {n_fit} written")
