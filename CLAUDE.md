@@ -27,11 +27,21 @@ uv run own-garmin --help         # CLI entry point
 | Module | Role |
 |---|---|
 | `src/own_garmin/paths.py` | All path/URI construction — downstream code uses these helpers, never hardcoded paths. Returns strings so `s3://` is a drop-in future swap. |
-| `src/own_garmin/client.py` | Session-aware `Garmin` wrapper. Tries token resume first; falls back to email+password and persists new tokens. Session stored in `~/.config/own-garmin/session/`. |
+| `src/own_garmin/client/` | Session-aware `GarminClient` package. `client.py` holds the main class; `strategies.py` implements the 5-strategy login chain; `constants.py` holds DI client IDs and endpoints; `exceptions.py` defines the error hierarchy. Tries token resume first; falls back to the login chain and persists new tokens. Session stored in `~/.config/own-garmin/session/`. |
 | `src/own_garmin/bronze/activities.py` | Fetches from Garmin, groups by date, writes JSON. Idempotent: merges on `activityId` if file exists. |
 | `src/own_garmin/silver/activities.py` | Pure function `transform(paths) -> pl.DataFrame`. Handles semicircle→degree conversion, dedup by `activity_id`. Rebuildable via `rebuild()`. |
 | `src/own_garmin/query.py` | Opens in-memory DuckDB, registers silver Parquet as a view, returns Polars DataFrame. |
 | `src/own_garmin/cli.py` | Typer app with four commands: `login`, `ingest`, `process`, `query`. |
+
+### `GarminClient` public API
+
+```python
+class GarminClient:
+    def list_activities(self, start: date, end: date) -> list[dict]: ...
+    def get_activity(self, activity_id: int) -> dict: ...          # summary
+    def get_activity_details(self, activity_id: int) -> dict: ...  # splits, laps, metrics
+    def download_fit(self, activity_id: int) -> bytes: ...         # raw FIT file bytes
+```
 
 ### Key design rules
 

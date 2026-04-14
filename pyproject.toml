@@ -8,8 +8,9 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "requests>=2.31.0",
+    "curl-cffi>=0.7.1",
     "duckdb>=1.5.1",
-    "garminconnect>=0.3.2",
     "polars>=1.39.3",
     "python-dotenv>=1.2.2",
     "typer>=0.24.1",
@@ -26,6 +27,7 @@ build-backend = "uv_build"
 dev = [
     "pre-commit>=4.2.0",
     "pytest>=9.0.3",
+    "pytest-mock>=3.10.0",
     "ruff>=0.15.10",
 ]
 

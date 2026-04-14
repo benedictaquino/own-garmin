@@ -23,7 +23,7 @@ We will implement a **Local Data Lakehouse** using a **Medallion Architecture**,
 
 ### 2. Data Layers (Medallion Pattern)
 
-* **Bronze (Raw):** Stores original, unmodified JSON responses from Garmin. This layer is strictly immutable. If parsing logic fails or Garmin adds new metrics, the source data remains preserved for re-processing.
+* **Bronze (Raw):** Stores original, unmodified FIT files and JSON responses from Garmin. This layer is strictly immutable. If parsing logic fails or Garmin adds new metrics, the source data remains preserved for re-processing.
   * *Pathing:* `/data/bronze/{category}/year={YYYY}/month={MM}/day={DD}.json`
 * **Silver (Processed):** Flattened, cleaned, and typed Parquet files created by Polars. This layer converts Garmin’s internal units (e.g., semicircles, UTC offsets) into human-readable metrics.
   * *Pathing:* `/data/silver/{category}/` (Partitioned by date).
