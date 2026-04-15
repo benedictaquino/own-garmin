@@ -1,0 +1,30 @@
+[
+  {
+    "activityId": 1003,
+    "activityType": {"typeKey": "running"},
+    "startTimeLocal": "2026-01-16 08:00:00",
+    "startTimeGMT": "2026-01-16 16:00:00",
+    "duration": 2400.0,
+    "distance": 8000.0,
+    "averageHR": 155.0,
+    "maxHR": 175.0,
+    "calories": 550.0,
+    "elevationGain": 80.0,
+    "elevationLoss": 80.0
+  },
+  {
+    "activityId": 1001,
+    "activityType": {"typeKey": "running"},
+    "startTimeLocal": "2026-01-15 08:00:00",
+    "startTimeGMT": "2026-01-15 16:00:00",
+    "duration": 1800.0,
+    "distance": 9999.0,
+    "averageHR": 150.0,
+    "maxHR": 170.0,
+    "calories": 400.0,
+    "elevationGain": 50.0,
+    "elevationLoss": 50.0,
+    "startLatitude": 523255203,
+    "startLongitude": -1073741824
+  }
+]
