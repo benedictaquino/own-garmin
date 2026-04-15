@@ -14,6 +14,7 @@ dependencies = [
     "polars>=1.39.3",
     "python-dotenv>=1.2.2",
     "typer>=0.24.1",
+    "garmin-fit-sdk>=21.0",
 ]
 
 [project.scripts]

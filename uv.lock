@@ -261,6 +261,15 @@ wheels = [
 ]
 
 [[package]]
+name = "garmin-fit-sdk"
+version = "21.200.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/71/33cf4e161f6513b282fbd5d3fc71d19303f49eab89ce10e1fe6c3343aad3/garmin_fit_sdk-21.200.0.tar.gz", hash = "sha256:d35506280b151791b98c52ddbf5317eebf9bc268456dd400d8b1d340d10dab9d", size = 147721, upload-time = "2026-04-08T14:48:30.361Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/fe/e3f321ccdd59bf4f938cdf8f0950fc3152f8ffff33982ab6236c1a4f6d10/garmin_fit_sdk-21.200.0-py3-none-any.whl", hash = "sha256:3d77e02299f5aea1302075f63f0201574c46ca5ff2bdf5707f683319d236dccf", size = 162872, upload-time = "2026-04-08T14:48:29.122Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.18"
 source = { registry = "https://pypi.org/simple" }
@@ -324,6 +333,7 @@ source = { editable = "." }
 dependencies = [
     { name = "curl-cffi" },
     { name = "duckdb" },
+    { name = "garmin-fit-sdk" },
     { name = "polars" },
     { name = "python-dotenv" },
     { name = "requests" },
@@ -342,6 +352,7 @@ dev = [
 requires-dist = [
     { name = "curl-cffi", specifier = ">=0.7.1" },
     { name = "duckdb", specifier = ">=1.5.1" },
+    { name = "garmin-fit-sdk", specifier = ">=21.0" },
     { name = "polars", specifier = ">=1.39.3" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "requests", specifier = ">=2.31.0" },
