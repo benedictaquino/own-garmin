@@ -66,12 +66,12 @@ def test_silver_path_default_root():
 def test_silver_glob(monkeypatch):
     monkeypatch.setenv("OWN_GARMIN_DATA_DIR", "/tmp/foo")
     result = paths.silver_glob("activities")
-    assert result == "/tmp/foo/silver/activities/*.parquet"
+    assert result == "/tmp/foo/silver/activities/**/*.parquet"
 
 
 def test_silver_glob_default_root():
     result = paths.silver_glob("activities")
-    assert result == "./data/silver/activities/*.parquet"
+    assert result == "./data/silver/activities/**/*.parquet"
 
 
 def test_paths_return_strings(monkeypatch):
