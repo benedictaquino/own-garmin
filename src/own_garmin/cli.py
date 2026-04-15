@@ -1,23 +1,50 @@
+import functools
+import shutil
 from datetime import date
+from pathlib import Path
+from typing import Optional
 
 import typer
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 
-@app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
+def _handle_errors(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            typer.echo(f"error: {e}", err=True)
+            raise typer.Exit(code=1)
+
+    return wrapper
 
 
 @app.command()
+@_handle_errors
+def login() -> None:
+    """Force a fresh Garmin login and persist new session tokens."""
+    from own_garmin import paths
+    from own_garmin.client import GarminClient
+
+    session = Path(paths.session_dir())
+    if session.exists():
+        shutil.rmtree(session)
+    client = GarminClient()
+    typer.echo(f"session: {client.session_dir}")
+
+
+@app.command()
+@_handle_errors
 def ingest(
     since: str = typer.Option(..., help="Start date (YYYY-MM-DD)"),
-    until: str = typer.Option(..., help="End date (YYYY-MM-DD)"),
+    until: Optional[str] = typer.Option(
+        None, help="End date (YYYY-MM-DD); defaults to today"
+    ),
     sleep_sec: float = typer.Option(0.5, help="Sleep between detail/FIT requests"),
 ) -> None:
     """Ingest activity summaries, details, and FIT files from Garmin into bronze."""
@@ -25,7 +52,7 @@ def ingest(
     from own_garmin.client import GarminClient
 
     since_date = date.fromisoformat(since)
-    until_date = date.fromisoformat(until)
+    until_date = date.fromisoformat(until) if until else date.today()
 
     client = GarminClient()
     activity_list = client.list_activities(since_date, until_date)
@@ -41,6 +68,17 @@ def ingest(
 
 
 @app.command()
+@_handle_errors
+def process() -> None:
+    """Rebuild the silver activities parquet from bronze JSON."""
+    from own_garmin.silver import activities
+
+    n = activities.rebuild()
+    typer.echo(f"Silver activities: {n} rows written")
+
+
+@app.command()
+@_handle_errors
 def query(
     sql: str = typer.Argument(
         ..., help="SQL query to run against silver parquet views"
