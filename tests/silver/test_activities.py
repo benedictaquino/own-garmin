@@ -135,3 +135,34 @@ def test_rebuild_writes_partitioned_parquet(tmp_path):
 
 def test_rebuild_no_bronze_returns_zero(tmp_path):
     assert activities.rebuild() == 0
+
+
+def test_rebuild_clears_stale_partitions(tmp_path):
+    jan_activity = _make_activity(
+        1, start_local="2026-01-05 08:00:00", start_gmt="2026-01-05 16:00:00"
+    )
+    feb_activity = _make_activity(
+        2, start_local="2026-02-10 09:00:00", start_gmt="2026-02-10 17:00:00"
+    )
+
+    jan_path = tmp_path / "bronze/activities/year=2026/month=01/day=05.json"
+    jan_path.parent.mkdir(parents=True, exist_ok=True)
+    jan_path.write_text(json.dumps([jan_activity]))
+
+    feb_path = tmp_path / "bronze/activities/year=2026/month=02/day=10.json"
+    feb_path.parent.mkdir(parents=True, exist_ok=True)
+    feb_path.write_text(json.dumps([feb_activity]))
+
+    assert activities.rebuild() == 2
+
+    feb_path.unlink()
+    assert activities.rebuild() == 1
+
+    con = duckdb.connect(":memory:")
+    pattern = str(tmp_path / "silver/activities/**/*.parquet")
+    rows = con.sql(
+        f"SELECT activity_id, month "
+        f"FROM read_parquet('{pattern}', hive_partitioning=1) "
+        f"ORDER BY activity_id"
+    ).fetchall()
+    assert rows == [(1, 1)]

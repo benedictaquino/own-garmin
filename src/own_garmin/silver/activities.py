@@ -1,4 +1,5 @@
 import glob
+import shutil
 from pathlib import Path
 
 import polars as pl
@@ -88,6 +89,7 @@ def rebuild() -> int:
         return 0
 
     target = paths.silver_path("activities")
+    shutil.rmtree(target, ignore_errors=True)
     Path(target).mkdir(parents=True, exist_ok=True)
     df.write_parquet(target, partition_by=["year", "month"])
     return df.height

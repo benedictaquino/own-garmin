@@ -1,5 +1,6 @@
 import glob
 import logging
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -104,6 +105,7 @@ def rebuild() -> int:
         return 0
 
     target = paths.silver_path("fit_records")
+    shutil.rmtree(target, ignore_errors=True)
     Path(target).mkdir(parents=True, exist_ok=True)
     df.write_parquet(target, partition_by=["year", "month"])
     return df.height

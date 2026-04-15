@@ -157,3 +157,39 @@ def test_rebuild_writes_partitioned_parquet(tmp_path):
 
 def test_rebuild_no_bronze_returns_zero(tmp_path):
     assert fit_records.rebuild() == 0
+
+
+def test_rebuild_clears_stale_partitions(tmp_path):
+    jan_records = [_make_record(0)]
+    feb_base = datetime.datetime(2026, 2, 10, 9, 0, 0, tzinfo=_UTC)
+    feb_records = [
+        {
+            "timestamp": feb_base,
+            "heart_rate": 130,
+            "cadence": 80,
+            "speed": 3.0,
+            "power": 150,
+            "distance": 0.0,
+            "altitude": 50.0,
+            "position_lat": 523255203,
+            "position_long": -1073741824,
+        }
+    ]
+
+    jan_zip = Path(_write_fit_zip(tmp_path, 10, jan_records, day="2026/01/05"))
+    feb_zip = Path(_write_fit_zip(tmp_path, 20, feb_records, day="2026/02/10"))
+
+    assert fit_records.rebuild() == 2
+
+    feb_zip.unlink()
+    assert fit_records.rebuild() == 1
+
+    con = duckdb.connect(":memory:")
+    pattern = str(tmp_path / "silver/fit_records/**/*.parquet")
+    rows = con.sql(
+        f"SELECT activity_id, month "
+        f"FROM read_parquet('{pattern}', hive_partitioning=1) "
+        f"ORDER BY activity_id"
+    ).fetchall()
+    assert rows == [(10, 1)]
+    assert jan_zip.exists()
