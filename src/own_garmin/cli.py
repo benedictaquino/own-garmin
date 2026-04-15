@@ -38,3 +38,16 @@ def ingest(
 
     n_fit = fit.ingest(client, activity_list, sleep_sec=sleep_sec)
     typer.echo(f"FIT files: {n_fit} written")
+
+
+@app.command()
+def query(
+    sql: str = typer.Argument(
+        ..., help="SQL query to run against silver parquet views"
+    ),
+) -> None:
+    """Run a SQL query against the silver parquet layer and print the result."""
+    from own_garmin.query import query as run_query
+
+    df = run_query(sql)
+    typer.echo(df)
