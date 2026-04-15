@@ -85,11 +85,12 @@ def rebuild() -> int:
     pattern = f"{paths.data_root()}/bronze/activities/**/*.json"
     files = sorted(glob.glob(pattern, recursive=True))
     df = transform(files)
-    if df.height == 0:
-        return 0
 
     target = paths.silver_path("activities")
     shutil.rmtree(target, ignore_errors=True)
+    if df.height == 0:
+        return 0
+
     Path(target).mkdir(parents=True, exist_ok=True)
     df.write_parquet(target, partition_by=["year", "month"])
     return df.height

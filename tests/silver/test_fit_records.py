@@ -159,6 +159,19 @@ def test_rebuild_no_bronze_returns_zero(tmp_path):
     assert fit_records.rebuild() == 0
 
 
+def test_rebuild_with_empty_bronze_clears_existing_silver(tmp_path):
+    _write_fit_zip(tmp_path, 7, [_make_record(0)])
+    assert fit_records.rebuild() == 1
+    silver_dir = tmp_path / "silver/fit_records"
+    assert list(silver_dir.rglob("*.parquet")), "expected silver parquet seeded"
+
+    for zip_file in (tmp_path / "bronze").rglob("*.zip"):
+        zip_file.unlink()
+
+    assert fit_records.rebuild() == 0
+    assert not list(silver_dir.rglob("*.parquet"))
+
+
 def test_rebuild_clears_stale_partitions(tmp_path):
     jan_records = [_make_record(0)]
     feb_base = datetime.datetime(2026, 2, 10, 9, 0, 0, tzinfo=_UTC)

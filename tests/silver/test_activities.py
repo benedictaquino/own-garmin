@@ -137,6 +137,19 @@ def test_rebuild_no_bronze_returns_zero(tmp_path):
     assert activities.rebuild() == 0
 
 
+def test_rebuild_with_empty_bronze_clears_existing_silver(tmp_path):
+    _write_bronze_day(tmp_path, [_make_activity(1)])
+    assert activities.rebuild() == 1
+    silver_dir = tmp_path / "silver/activities"
+    assert list(silver_dir.rglob("*.parquet")), "expected silver parquet seeded"
+
+    for bronze_file in (tmp_path / "bronze").rglob("*.json"):
+        bronze_file.unlink()
+
+    assert activities.rebuild() == 0
+    assert not list(silver_dir.rglob("*.parquet"))
+
+
 def test_rebuild_clears_stale_partitions(tmp_path):
     jan_activity = _make_activity(
         1, start_local="2026-01-05 08:00:00", start_gmt="2026-01-05 16:00:00"
