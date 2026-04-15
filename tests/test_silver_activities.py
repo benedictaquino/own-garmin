@@ -33,15 +33,17 @@ def test_transform_schema():
 def test_transform_dedup():
     df = transform([DAY_15, DAY_16])
     assert df.height == 3
+    assert set(df["activity_id"].to_list()) == {1001, 1002, 1003}
 
-    row_1001 = df.filter(pl.col("activity_id") == 1001).to_dicts()[0]
-    assert row_1001["distance_m"] == 9999.0
+    rows_1001 = df.filter(pl.col("activity_id") == 1001).to_dicts()
+    assert len(rows_1001) == 1
+    assert rows_1001[0]["distance_m"] == 9999.0
 
 
 def test_transform_semicircle_conversion():
     df = transform([DAY_15])
     row = df.filter(pl.col("activity_id") == 1001).to_dicts()[0]
-    assert row["start_lat"] == pytest.approx(43.86, abs=0.01)
+    assert row["start_lat"] == pytest.approx(43.86, abs=1e-4)
 
 
 def test_transform_null_gps():
