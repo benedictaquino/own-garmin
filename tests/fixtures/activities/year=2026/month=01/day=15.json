@@ -1,0 +1,32 @@
+[
+  {
+    "activityId": 1001,
+    "activityType": {"typeKey": "running"},
+    "startTimeLocal": "2026-01-15 08:00:00",
+    "startTimeGMT": "2026-01-15 16:00:00",
+    "duration": 1800.0,
+    "distance": 5000.0,
+    "averageHR": 150.0,
+    "maxHR": 170.0,
+    "calories": 400.0,
+    "elevationGain": 50.0,
+    "elevationLoss": 50.0,
+    "startLatitude": 523270182,
+    "startLongitude": -1073741824
+  },
+  {
+    "activityId": 1002,
+    "activityType": {"typeKey": "cycling"},
+    "startTimeLocal": "2026-01-15 14:00:00",
+    "startTimeGMT": "2026-01-15 22:00:00",
+    "duration": 3600.0,
+    "distance": 30000.0,
+    "averageHR": 140.0,
+    "maxHR": 165.0,
+    "calories": 700.0,
+    "elevationGain": 200.0,
+    "elevationLoss": 200.0,
+    "startLatitude": 523255203,
+    "startLongitude": -1073741824
+  }
+]

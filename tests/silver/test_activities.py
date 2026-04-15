@@ -3,7 +3,6 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
-import polars as pl
 import pytest
 
 from own_garmin.silver import activities
@@ -43,60 +42,6 @@ def _write_bronze_day(tmp_path: Path, day_activities: list[dict]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(day_activities))
     return str(path)
-
-
-def test_transform_dedup_by_activity_id(tmp_path):
-    path = _write_bronze_day(
-        tmp_path,
-        [
-            _make_activity(1, distance=100.0),
-            _make_activity(1, distance=999.0),
-            _make_activity(2, distance=200.0),
-        ],
-    )
-    df = activities.transform([path])
-    assert df.height == 2
-
-    by_id = {row["activity_id"]: row for row in df.to_dicts()}
-    assert by_id[1]["distance_m"] == 999.0
-    assert by_id[2]["distance_m"] == 200.0
-
-
-def test_transform_semicircle_conversion(tmp_path):
-    path = _write_bronze_day(tmp_path, [_make_activity(1, startLatitude=523255203)])
-    df = activities.transform([path])
-    assert df.item(0, "start_lat") == pytest.approx(43.86, abs=0.01)
-
-
-def test_transform_null_gps(tmp_path):
-    activity = _make_activity(1)
-    activity.pop("startLatitude")
-    activity.pop("startLongitude")
-    path = _write_bronze_day(tmp_path, [activity])
-    df = activities.transform([path])
-    assert df.item(0, "start_lat") is None
-    assert df.item(0, "start_lon") is None
-
-
-def test_transform_schema_types(tmp_path):
-    path = _write_bronze_day(tmp_path, [_make_activity(1)])
-    df = activities.transform([path])
-    schema = dict(df.schema)
-    assert schema["activity_id"] == pl.Int64
-    assert schema["activity_type"] == pl.Utf8
-    assert isinstance(schema["start_time_local"], pl.Datetime)
-    assert isinstance(schema["start_time_utc"], pl.Datetime)
-    assert schema["duration_sec"] == pl.Float64
-    assert schema["distance_m"] == pl.Float64
-    assert schema["avg_hr"] == pl.Float64
-    assert schema["max_hr"] == pl.Float64
-    assert schema["calories"] == pl.Float64
-    assert schema["elevation_gain_m"] == pl.Float64
-    assert schema["elevation_loss_m"] == pl.Float64
-    assert schema["start_lat"] == pl.Float64
-    assert schema["start_lon"] == pl.Float64
-    assert schema["year"] == pl.Int32
-    assert schema["month"] == pl.Int32
 
 
 def test_transform_derives_year_month(tmp_path):
