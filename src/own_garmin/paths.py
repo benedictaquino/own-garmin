@@ -29,4 +29,4 @@ def silver_path(category: str) -> str:
 
 
 def silver_glob(category: str) -> str:
-    return f"{silver_path(category)}/*.parquet"
+    return f"{silver_path(category)}/**/*.parquet"
