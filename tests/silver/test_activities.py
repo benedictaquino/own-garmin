@@ -32,8 +32,8 @@ def _make_activity(
         "calories": 400.0,
         "elevationGain": 50.0,
         "elevationLoss": 50.0,
-        "startLatitude": 523255203,
-        "startLongitude": -1073741824,
+        "startLatitude": 43.86,
+        "startLongitude": -79.37,
         **extra,
     }
 
@@ -62,8 +62,8 @@ def test_transform_dedup_by_activity_id(tmp_path):
     assert by_id[2]["distance_m"] == 200.0
 
 
-def test_transform_semicircle_conversion(tmp_path):
-    path = _write_bronze_day(tmp_path, [_make_activity(1, startLatitude=523255203)])
+def test_transform_lat_lon_passthrough(tmp_path):
+    path = _write_bronze_day(tmp_path, [_make_activity(1, startLatitude=43.86)])
     df = activities.transform([path])
     assert df.item(0, "start_lat") == pytest.approx(43.86, abs=0.01)
 
