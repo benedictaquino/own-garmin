@@ -26,7 +26,7 @@ def ingest(activities: list[dict]) -> int:
             existing[a["activityId"]] = a  # new wins on conflict
 
         merged = list(existing.values())
-        new_json = json.dumps(merged, indent=2)
+        new_json = json.dumps(merged, indent=2, sort_keys=True)
         target = Path(path)
         if not target.exists() or target.read_text(encoding="utf-8") != new_json:
             target.parent.mkdir(parents=True, exist_ok=True)

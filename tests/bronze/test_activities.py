@@ -106,3 +106,22 @@ def test_ingest_pretty_prints_json(tmp_path):
     path = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
     text = path.read_text()
     assert "\n" in text  # pretty-printed, not one line
+
+
+def test_ingest_idempotent_regardless_of_key_order(tmp_path):
+    """Re-ingest with different field order must not rewrite the file."""
+    activities.ingest([make_activity(1, "2026-01-05 08:00:00", name="run", extra="a")])
+    path = Path(tmp_path / "bronze/activities/year=2026/month=01/day=05.json")
+    mtime_before = path.stat().st_mtime
+
+    # Same logical content, but with fields in a different order
+    reordered = {
+        "extra": "a",
+        "name": "run",
+        "startTimeLocal": "2026-01-05 08:00:00",
+        "activityId": 1,
+    }
+    activities.ingest([reordered])
+    mtime_after = path.stat().st_mtime
+
+    assert mtime_before == mtime_after  # stable key sorting prevents spurious rewrite

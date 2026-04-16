@@ -89,6 +89,11 @@ def rebuild() -> int:
     if df.height == 0:
         return 0
 
+    df = df.with_columns(
+        pl.col("year").cast(pl.Utf8),
+        pl.col("month").cast(pl.Utf8).str.zfill(2),
+    )
+
     Path(target).mkdir(parents=True, exist_ok=True)
     df.write_parquet(target, partition_by=["year", "month"])
     return df.height
