@@ -6,8 +6,6 @@ import polars as pl
 
 from own_garmin import paths
 
-SEMICIRCLE_TO_DEG = 180.0 / 2**31
-
 _DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _SCHEMA = {
@@ -70,8 +68,8 @@ def transform(bronze_json_paths: list[str]) -> pl.DataFrame:
         nullable("calories", pl.Float64).alias("calories"),
         nullable("elevationGain", pl.Float64).alias("elevation_gain_m"),
         nullable("elevationLoss", pl.Float64).alias("elevation_loss_m"),
-        (nullable("startLatitude", pl.Float64) * SEMICIRCLE_TO_DEG).alias("start_lat"),
-        (nullable("startLongitude", pl.Float64) * SEMICIRCLE_TO_DEG).alias("start_lon"),
+        nullable("startLatitude", pl.Float64).alias("start_lat"),
+        nullable("startLongitude", pl.Float64).alias("start_lon"),
     ).with_columns(
         pl.col("start_time_local").dt.year().cast(pl.Int32).alias("year"),
         pl.col("start_time_local").dt.month().cast(pl.Int32).alias("month"),
@@ -90,6 +88,11 @@ def rebuild() -> int:
     shutil.rmtree(target, ignore_errors=True)
     if df.height == 0:
         return 0
+
+    df = df.with_columns(
+        pl.col("year").cast(pl.Utf8),
+        pl.col("month").cast(pl.Utf8).str.zfill(2),
+    )
 
     Path(target).mkdir(parents=True, exist_ok=True)
     df.write_parquet(target, partition_by=["year", "month"])

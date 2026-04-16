@@ -11,8 +11,8 @@
     "calories": 400.0,
     "elevationGain": 50.0,
     "elevationLoss": 50.0,
-    "startLatitude": 523270182,
-    "startLongitude": -1073741824
+    "startLatitude": 43.8614,
+    "startLongitude": -79.37
   },
   {
     "activityId": 1002,
@@ -26,7 +26,7 @@
     "calories": 700.0,
     "elevationGain": 200.0,
     "elevationLoss": 200.0,
-    "startLatitude": 523255203,
-    "startLongitude": -1073741824
+    "startLatitude": 43.86,
+    "startLongitude": -79.37
   }
 ]
