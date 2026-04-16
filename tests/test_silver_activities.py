@@ -40,10 +40,10 @@ def test_transform_dedup():
     assert rows_1001[0]["distance_m"] == 9999.0
 
 
-def test_transform_semicircle_conversion():
+def test_transform_lat_lon_passthrough():
     df = transform([DAY_15])
     row = df.filter(pl.col("activity_id") == 1001).to_dicts()[0]
-    assert row["start_lat"] == pytest.approx(43.86, abs=1e-4)
+    assert row["start_lat"] == pytest.approx(43.8614, abs=1e-4)
 
 
 def test_transform_null_gps():

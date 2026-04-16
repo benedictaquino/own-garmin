@@ -31,8 +31,8 @@ def _make_activity(
         "calories": 400.0,
         "elevationGain": 50.0,
         "elevationLoss": 50.0,
-        "startLatitude": 523255203,
-        "startLongitude": -1073741824,
+        "startLatitude": 43.86,
+        "startLongitude": -79.37,
         **extra,
     }
 
