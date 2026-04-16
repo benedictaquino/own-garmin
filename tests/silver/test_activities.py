@@ -120,7 +120,7 @@ def test_rebuild_writes_partitioned_parquet(tmp_path):
     count = activities.rebuild()
     assert count == 2
 
-    partition_dir = tmp_path / "silver/activities/year=2026/month=1"
+    partition_dir = tmp_path / "silver/activities/year=2026/month=01"
     parquet_files = list(partition_dir.glob("*.parquet"))
     assert parquet_files, f"expected parquet under {partition_dir}"
 
@@ -130,7 +130,7 @@ def test_rebuild_writes_partitioned_parquet(tmp_path):
         f"SELECT COUNT(*) AS n, MAX(year) AS y, MAX(month) AS m "
         f"FROM read_parquet('{pattern}', hive_partitioning=1)"
     ).fetchone()
-    assert result == (2, 2026, 1)
+    assert result == (2, 2026, "01")
 
 
 def test_rebuild_no_bronze_returns_zero(tmp_path):
@@ -178,4 +178,4 @@ def test_rebuild_clears_stale_partitions(tmp_path):
         f"FROM read_parquet('{pattern}', hive_partitioning=1) "
         f"ORDER BY activity_id"
     ).fetchall()
-    assert rows == [(1, 1)]
+    assert rows == [(1, "01")]  # month is zero-padded string in hive partitions
