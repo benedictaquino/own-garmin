@@ -58,7 +58,12 @@ class GarminClient:
     Completely decoupled from python-garminconnect and garth.
     """
 
-    def __init__(self, prompt_mfa: Callable[[], str] | None = None) -> None:
+    def __init__(
+        self,
+        prompt_mfa: Callable[[], str] | None = None,
+        *,
+        resume_session: bool = True,
+    ) -> None:
         self.domain = "garmin.com"
         self._sso = f"https://sso.{self.domain}"
         self._connect = f"https://connect.{self.domain}"
@@ -91,58 +96,69 @@ class GarminClient:
         self._mfa_session: Any = None  # mobile_requests MFA session
 
         self.session_dir = Path(paths.session_dir())
+        self._tokenstore_path: str | None = None
+
+        # Always attempt to set up the session dir so fresh-login tokens can be
+        # persisted regardless of whether resume_session is True or False.
         try:
             self.session_dir.mkdir(parents=True, exist_ok=True)
-            self._tokenstore_path: str | None = str(
-                self.session_dir / "garmin_tokens.json"
-            )
+            self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
         except OSError as e:
             _LOGGER.warning(
                 "Session dir %s is not writable (%s); tokens will not be persisted.",
                 self.session_dir,
                 e,
             )
-            self._tokenstore_path = None
 
         resume_success = False
-        tokens_env = os.environ.get("GARMIN_TOKENS_JSON")
-        if tokens_env:
-            try:
-                self._load_tokens_from_json(tokens_env)
-                self._load_profile()
-                resume_success = True
-                _LOGGER.info("Session side-loaded from GARMIN_TOKENS_JSON env var.")
-            except (
-                json.JSONDecodeError,
-                ValueError,
-                GarminAuthenticationError,
-            ) as e:
-                _LOGGER.info(
-                    "GARMIN_TOKENS_JSON side-load failed (%s: %s). Falling back.",
-                    type(e).__name__,
-                    e,
-                )
 
-        tokenstore_path = self._tokenstore_path
-        if not resume_success and tokenstore_path and Path(tokenstore_path).exists():
-            try:
-                self._load_tokens(tokenstore_path)
-                self._load_profile()
-                resume_success = True
-                _LOGGER.info("Session resumed successfully from local token store.")
-            except (
-                OSError,
-                json.JSONDecodeError,
-                ValueError,
-                GarminAuthenticationError,
-            ) as e:
-                _LOGGER.info(
-                    "Auth-resume failed (%s: %s). Triggering full login.",
-                    type(e).__name__,
-                    e,
-                )
-        elif not resume_success and not tokens_env:
-            _LOGGER.info("No token file found. Triggering full login.")
+        if resume_session:
+            tokens_env = os.environ.get("GARMIN_TOKENS_JSON")
+            if tokens_env:
+                try:
+                    self._load_tokens_from_json(tokens_env)
+                    self._load_profile()
+                    resume_success = True
+                    _LOGGER.info("Session side-loaded from GARMIN_TOKENS_JSON env var.")
+                except (
+                    json.JSONDecodeError,
+                    ValueError,
+                    GarminAuthenticationError,
+                ) as e:
+                    _LOGGER.info(
+                        "GARMIN_TOKENS_JSON side-load failed (%s: %s). Falling back.",
+                        type(e).__name__,
+                        e,
+                    )
+
+            tokenstore_path = self._tokenstore_path
+            if (
+                not resume_success
+                and tokenstore_path
+                and Path(tokenstore_path).exists()
+            ):
+                try:
+                    self._load_tokens(tokenstore_path)
+                    self._load_profile()
+                    resume_success = True
+                    _LOGGER.info("Session resumed successfully from local token store.")
+                except (
+                    OSError,
+                    json.JSONDecodeError,
+                    ValueError,
+                    GarminAuthenticationError,
+                ) as e:
+                    _LOGGER.info(
+                        "Auth-resume failed (%s: %s). Triggering full login.",
+                        type(e).__name__,
+                        e,
+                    )
+            elif not resume_success and not tokens_env:
+                _LOGGER.info("No token file found. Triggering full login.")
+        else:
+            _LOGGER.info(
+                "resume_session=False; skipping session resume, forcing fresh login."
+            )
 
         if not resume_success:
             load_dotenv()

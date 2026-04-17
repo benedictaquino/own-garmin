@@ -48,7 +48,7 @@ def login(
         shutil.rmtree(session)
 
     prompt_mfa = NtfyMfaHandler().get_mfa_code if remote_mfa else None
-    client = GarminClient(prompt_mfa=prompt_mfa)
+    client = GarminClient(prompt_mfa=prompt_mfa, resume_session=False)
 
     # When exporting, stdout is for token JSON only; all info goes to stderr.
     typer.echo(f"session: {client.session_dir}", err=export_session)

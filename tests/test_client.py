@@ -589,3 +589,92 @@ def test_init_session_dir_unwritable_keeps_working(mock_paths, monkeypatch):
             client = GarminClient()
 
     assert client._tokenstore_path is None
+
+
+# ---------------------------------------------------------------------------
+# resume_session=False
+# ---------------------------------------------------------------------------
+
+
+def test_init_resume_session_false_skips_env_sideload(mock_paths, monkeypatch, mocker):
+    """resume_session=False ignores GARMIN_TOKENS_JSON and forces fresh login."""
+    token_data = {
+        "di_token": "env_access_token",
+        "di_refresh_token": "env_refresh_token",
+        "di_client_id": "env_client_id",
+    }
+    monkeypatch.setenv("GARMIN_TOKENS_JSON", json.dumps(token_data))
+    monkeypatch.setenv("GARMIN_EMAIL", "test@example.com")
+    monkeypatch.setenv("GARMIN_PASSWORD", "secret123")
+
+    with patch.object(GarminClient, "_load_profile"):
+        with patch.object(GarminClient, "_login_chain", autospec=True) as m_login:
+
+            def side_effect(instance, email, password, **kwargs):
+                instance.di_token = "fresh_token"
+                instance.di_refresh_token = "fresh_refresh"
+                instance.di_client_id = "fresh_client"
+                return None, None
+
+            m_login.side_effect = side_effect
+            client = GarminClient(resume_session=False)
+
+    m_login.assert_called_once()
+    assert client.di_token == "fresh_token"
+
+
+def test_init_resume_session_false_skips_disk_resume(mock_paths, monkeypatch, mocker):
+    """resume_session=False ignores a token file on disk and forces fresh login."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(
+        json.dumps(
+            {
+                "di_token": "disk_token",
+                "di_refresh_token": "disk_refresh",
+                "di_client_id": "disk_client",
+            }
+        )
+    )
+    monkeypatch.setenv("GARMIN_EMAIL", "test@example.com")
+    monkeypatch.setenv("GARMIN_PASSWORD", "secret123")
+
+    with patch.object(GarminClient, "_load_profile"):
+        with patch.object(GarminClient, "_login_chain", autospec=True) as m_login:
+
+            def side_effect(instance, email, password, **kwargs):
+                instance.di_token = "fresh_token"
+                instance.di_refresh_token = "fresh_refresh"
+                instance.di_client_id = "fresh_client"
+                return None, None
+
+            m_login.side_effect = side_effect
+            client = GarminClient(resume_session=False)
+
+    m_login.assert_called_once()
+    assert client.di_token == "fresh_token"
+
+
+def test_init_env_sideload_does_not_mkdir(mock_paths, monkeypatch, mocker):
+    """When GARMIN_TOKENS_JSON side-load succeeds, session dir mkdir is still called
+    but only once during init — the env path does NOT re-enter the disk-mkdir block."""
+    token_data = {
+        "di_token": "env_token",
+        "di_refresh_token": "env_refresh",
+        "di_client_id": "env_client",
+    }
+    monkeypatch.setenv("GARMIN_TOKENS_JSON", json.dumps(token_data))
+
+    mkdir_calls: list[tuple] = []
+    original_mkdir = Path.mkdir
+
+    def tracking_mkdir(self, *args, **kwargs):
+        mkdir_calls.append((str(self), args, kwargs))
+        return original_mkdir(self, *args, **kwargs)
+
+    with patch.object(Path, "mkdir", tracking_mkdir):
+        with patch.object(GarminClient, "_load_profile", return_value=None):
+            GarminClient()
+
+    # mkdir should have been called exactly once for the session dir setup
+    session_dir_mkdirs = [c for c in mkdir_calls if str(mock_paths) in c[0]]
+    assert len(session_dir_mkdirs) == 1

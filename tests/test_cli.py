@@ -132,6 +132,32 @@ def test_login_remote_mfa_wires_ntfy_handler(tmp_path, monkeypatch):
     assert callable(prompt_mfa)
     bound_self = getattr(prompt_mfa, "__self__", None)
     assert isinstance(bound_self, NtfyMfaHandler)
+    assert captured["resume_session"] is False
+
+
+def test_login_ignores_garmin_tokens_json(tmp_path, monkeypatch):
+    """login always passes resume_session=False even when GARMIN_TOKENS_JSON is set."""
+    monkeypatch.setenv(
+        "GARMIN_TOKENS_JSON",
+        '{"di_token":"env_tok","di_refresh_token":"r","di_client_id":"c"}',
+    )
+
+    captured = {}
+    mock_client = MagicMock()
+    mock_client.session_dir = tmp_path
+
+    def capture_init(**kwargs):
+        captured.update(kwargs)
+        return mock_client
+
+    with (
+        patch("own_garmin.paths.session_dir", return_value=str(tmp_path)),
+        patch("own_garmin.client.GarminClient", side_effect=capture_init),
+    ):
+        result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 0
+    assert captured["resume_session"] is False
 
 
 def test_login_export_session_prints_json_to_stdout(tmp_path):
