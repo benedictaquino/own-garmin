@@ -189,3 +189,40 @@ def test_poll_network_error_is_swallowed(monkeypatch, mocker):
 
     assert result == "654321"
     assert mock_requests.get.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Publish HTTP error
+# ---------------------------------------------------------------------------
+
+
+def test_publish_http_error_is_logged_and_polling_continues(
+    monkeypatch, mocker, caplog
+):
+    """HTTP error on publish POST is logged as warning; polling still succeeds."""
+    import logging
+
+    monkeypatch.setenv("NTFY_TOPIC", "fake-topic-uuid")
+    mock_requests = mocker.patch("own_garmin.client.mfa_handlers.requests")
+    mocker.patch("own_garmin.client.mfa_handlers.time.sleep")
+
+    # publish POST returns a response whose raise_for_status raises HTTPError
+    mock_post_resp = mocker.MagicMock()
+    mock_post_resp.raise_for_status.side_effect = _requests.HTTPError("403 Forbidden")
+    mock_requests.post.return_value = mock_post_resp
+    mock_requests.RequestException = _requests.RequestException
+    mock_requests.HTTPError = _requests.HTTPError
+
+    # poll GET returns a valid 6-digit code
+    mock_get_resp = mocker.MagicMock()
+    mock_get_resp.text = _json_line(event="message", message="112233")
+    mock_get_resp.raise_for_status.return_value = None
+    mock_requests.get.return_value = mock_get_resp
+
+    handler = NtfyMfaHandler(poll_interval_s=0.01, timeout_s=5.0)
+
+    with caplog.at_level(logging.WARNING, logger="own_garmin.client.mfa_handlers"):
+        result = handler.get_mfa_code()
+
+    assert result == "112233"
+    assert "Failed to publish ntfy.sh MFA notification" in caplog.text

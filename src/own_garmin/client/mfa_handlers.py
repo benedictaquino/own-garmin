@@ -50,12 +50,13 @@ class NtfyMfaHandler:
         start = time.time()
 
         try:
-            requests.post(
+            resp = requests.post(
                 f"{self.base_url}/{self.topic}",
                 data=b"own-garmin: Enter MFA code",
                 headers={"Title": "own-garmin MFA", "Priority": "high"},
                 timeout=10,
             )
+            resp.raise_for_status()
         except requests.RequestException as e:
             _LOGGER.warning("Failed to publish ntfy.sh MFA notification: %s", e)
 
