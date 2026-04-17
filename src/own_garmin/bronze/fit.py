@@ -1,9 +1,8 @@
 import logging
 import time
 from datetime import datetime
-from pathlib import Path
 
-from own_garmin import paths
+from own_garmin import paths, storage
 from own_garmin.client import GarminClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,7 +33,7 @@ def ingest(client: GarminClient, activities: list[dict], sleep_sec: float = 0.5)
 
         activity_id = activity["activityId"]
         path = paths.bronze_fit_path(activity_id, day)
-        if Path(path).exists():
+        if storage.exists(path):
             continue
 
         if not first_request:
@@ -42,8 +41,7 @@ def ingest(client: GarminClient, activities: list[dict], sleep_sec: float = 0.5)
         first_request = False
 
         fit_bytes = client.download_fit(activity_id)
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_bytes(fit_bytes)
+        storage.write_bytes(path, fit_bytes)
         newly_written += 1
 
     return newly_written
