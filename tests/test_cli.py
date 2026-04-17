@@ -116,7 +116,7 @@ def test_login_remote_mfa_wires_ntfy_handler(tmp_path, monkeypatch):
     mock_client = MagicMock()
     mock_client.session_dir = tmp_path
 
-    def capture_init(*args, **kwargs):
+    def capture_init(**kwargs):
         captured.update(kwargs)
         return mock_client
 
@@ -130,10 +130,11 @@ def test_login_remote_mfa_wires_ntfy_handler(tmp_path, monkeypatch):
     prompt_mfa = captured.get("prompt_mfa")
     assert prompt_mfa is not None
     assert callable(prompt_mfa)
-    assert isinstance(prompt_mfa.__self__, NtfyMfaHandler)
+    bound_self = getattr(prompt_mfa, "__self__", None)
+    assert isinstance(bound_self, NtfyMfaHandler)
 
 
-def test_login_export_session_prints_json_to_stdout(tmp_path, monkeypatch):
+def test_login_export_session_prints_json_to_stdout(tmp_path):
     """--export-session sends token JSON to stdout and session: line to stderr only."""
     token_json = '{"di_token":"abc","di_refresh_token":"ref","di_client_id":"cid"}'
 

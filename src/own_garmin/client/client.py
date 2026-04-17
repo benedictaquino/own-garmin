@@ -123,12 +123,10 @@ class GarminClient:
                     e,
                 )
 
-        tokenstore_exists = bool(
-            self._tokenstore_path and Path(self._tokenstore_path).exists()
-        )
-        if not resume_success and tokenstore_exists:
+        tokenstore_path = self._tokenstore_path
+        if not resume_success and tokenstore_path and Path(tokenstore_path).exists():
             try:
-                self._load_tokens(self._tokenstore_path)
+                self._load_tokens(tokenstore_path)
                 self._load_profile()
                 resume_success = True
                 _LOGGER.info("Session resumed successfully from local token store.")
