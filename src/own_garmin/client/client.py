@@ -290,12 +290,34 @@ class GarminClient:
         self.di_token = parsed.get("di_token")
         self.di_refresh_token = parsed.get("di_refresh_token")
         self.di_client_id = parsed.get("di_client_id")
-        if not self.di_token:
-            raise GarminAuthenticationError("Missing di_token in GARMIN_TOKENS_JSON")
+        missing = [
+            name
+            for name, value in (
+                ("di_token", self.di_token),
+                ("di_refresh_token", self.di_refresh_token),
+                ("di_client_id", self.di_client_id),
+            )
+            if not value
+        ]
+        if missing:
+            raise GarminAuthenticationError(
+                "GARMIN_TOKENS_JSON missing required fields: " + ", ".join(missing)
+            )
 
     def export_session(self) -> str:
-        if not self.di_token:
-            raise GarminAuthenticationError("No active session to export.")
+        missing = [
+            name
+            for name, value in (
+                ("di_token", self.di_token),
+                ("di_refresh_token", self.di_refresh_token),
+                ("di_client_id", self.di_client_id),
+            )
+            if not value
+        ]
+        if missing:
+            raise GarminAuthenticationError(
+                "No active session to export (missing: " + ", ".join(missing) + ")."
+            )
         return json.dumps(
             {
                 "di_token": self.di_token,
@@ -612,8 +634,12 @@ class GarminClient:
         if self._tokenstore_path:
             try:
                 self._dump_tokens(self._tokenstore_path)
-            except Exception as e:
-                _LOGGER.warning(f"Failed to persist refreshed tokens: {e}")
+            except OSError as e:
+                self._tokenstore_path = None
+                _LOGGER.warning(
+                    "Failed to persist refreshed tokens (%s); kept in memory.",
+                    e,
+                )
 
     def _sleep(self, seconds: float) -> None:
         """Sleep for the given duration. Isolated here so tests can stub it."""

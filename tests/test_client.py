@@ -570,12 +570,9 @@ def test_export_session_raises_when_unauthenticated(mock_paths):
 
 def test_init_session_dir_unwritable_keeps_working(mock_paths, monkeypatch):
     """Client constructs fine when session dir mkdir raises PermissionError."""
-    token_data = {
-        "di_token": "env_token",
-        "di_refresh_token": "env_refresh",
-        "di_client_id": "env_client",
-    }
-    monkeypatch.setenv("GARMIN_TOKENS_JSON", json.dumps(token_data))
+    monkeypatch.delenv("GARMIN_TOKENS_JSON", raising=False)
+    monkeypatch.setenv("GARMIN_EMAIL", "test@example.com")
+    monkeypatch.setenv("GARMIN_PASSWORD", "secret123")
 
     original_mkdir = Path.mkdir
 
@@ -586,7 +583,16 @@ def test_init_session_dir_unwritable_keeps_working(mock_paths, monkeypatch):
 
     with patch.object(Path, "mkdir", failing_mkdir):
         with patch.object(GarminClient, "_load_profile", return_value=None):
-            client = GarminClient()
+            with patch.object(GarminClient, "_login_chain", autospec=True) as m_login:
+
+                def side_effect(instance, email, password, **kwargs):
+                    instance.di_token = "fresh_token"
+                    instance.di_refresh_token = "fresh_refresh"
+                    instance.di_client_id = "fresh_client"
+                    return None, None
+
+                m_login.side_effect = side_effect
+                client = GarminClient()
 
     assert client._tokenstore_path is None
 
