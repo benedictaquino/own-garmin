@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from unittest.mock import MagicMock, patch
 
@@ -98,3 +99,99 @@ def test_query_error_exits_nonzero():
         result = runner.invoke(app, ["query", "SELECT broken"])
     assert result.exit_code == 1
     assert "error: bad sql" in result.output
+
+
+# ---------------------------------------------------------------------------
+# login --remote-mfa / --export-session
+# ---------------------------------------------------------------------------
+
+
+def test_login_remote_mfa_wires_ntfy_handler(tmp_path, monkeypatch):
+    """--remote-mfa passes NtfyMfaHandler.get_mfa_code as prompt_mfa to GarminClient."""
+    from own_garmin.client.mfa_handlers import NtfyMfaHandler
+
+    monkeypatch.setenv("NTFY_TOPIC", "test-topic")
+
+    captured = {}
+    mock_client = MagicMock()
+    mock_client.session_dir = tmp_path
+
+    def capture_init(**kwargs):
+        captured.update(kwargs)
+        return mock_client
+
+    with (
+        patch("own_garmin.paths.session_dir", return_value=str(tmp_path)),
+        patch("own_garmin.client.GarminClient", side_effect=capture_init),
+    ):
+        result = runner.invoke(app, ["login", "--remote-mfa"])
+
+    assert result.exit_code == 0
+    prompt_mfa = captured.get("prompt_mfa")
+    assert prompt_mfa is not None
+    assert callable(prompt_mfa)
+    bound_self = getattr(prompt_mfa, "__self__", None)
+    assert isinstance(bound_self, NtfyMfaHandler)
+    assert captured["resume_session"] is False
+
+
+def test_login_ignores_garmin_tokens_json(tmp_path, monkeypatch):
+    """login always passes resume_session=False even when GARMIN_TOKENS_JSON is set."""
+    monkeypatch.setenv(
+        "GARMIN_TOKENS_JSON",
+        '{"di_token":"env_tok","di_refresh_token":"r","di_client_id":"c"}',
+    )
+
+    captured = {}
+    mock_client = MagicMock()
+    mock_client.session_dir = tmp_path
+
+    def capture_init(**kwargs):
+        captured.update(kwargs)
+        return mock_client
+
+    with (
+        patch("own_garmin.paths.session_dir", return_value=str(tmp_path)),
+        patch("own_garmin.client.GarminClient", side_effect=capture_init),
+    ):
+        result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 0
+    assert captured["resume_session"] is False
+
+
+def test_login_export_session_prints_json_to_stdout(tmp_path):
+    """--export-session sends token JSON to stdout and session: line to stderr only."""
+    token_json = '{"di_token":"abc","di_refresh_token":"ref","di_client_id":"cid"}'
+
+    mock_client = MagicMock()
+    mock_client.export_session.return_value = token_json
+    mock_client.session_dir = tmp_path
+
+    with (
+        patch("own_garmin.paths.session_dir", return_value=str(tmp_path)),
+        patch("own_garmin.client.GarminClient", return_value=mock_client),
+    ):
+        result = runner.invoke(app, ["login", "--export-session"])
+
+    assert result.exit_code == 0
+    # result.stdout is the clean stdout stream (no stderr mixed in)
+    parsed = json.loads(result.stdout.splitlines()[-1])
+    assert parsed["di_token"] == "abc"
+    assert f"session: {tmp_path}" in result.stderr
+    assert "session:" not in result.stdout
+
+
+def test_login_without_flags_keeps_existing_behavior(tmp_path):
+    """Without --export-session, session: line goes to stdout as before."""
+    mock_client = MagicMock()
+    mock_client.session_dir = tmp_path
+
+    with (
+        patch("own_garmin.paths.session_dir", return_value=str(tmp_path)),
+        patch("own_garmin.client.GarminClient", return_value=mock_client),
+    ):
+        result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 0
+    assert f"session: {tmp_path}" in result.stdout

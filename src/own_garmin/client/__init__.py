@@ -5,6 +5,7 @@ from .exceptions import (
     GarminError,
     GarminTooManyRequestsError,
 )
+from .mfa_handlers import InteractiveMfaHandler, MfaHandler, NtfyMfaHandler
 
 __all__ = [
     "GarminClient",
@@ -12,4 +13,7 @@ __all__ = [
     "GarminAuthenticationError",
     "GarminTooManyRequestsError",
     "GarminConnectionError",
+    "MfaHandler",
+    "InteractiveMfaHandler",
+    "NtfyMfaHandler",
 ]

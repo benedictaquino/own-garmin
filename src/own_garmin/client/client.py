@@ -58,7 +58,12 @@ class GarminClient:
     Completely decoupled from python-garminconnect and garth.
     """
 
-    def __init__(self, prompt_mfa: Callable[[], str] | None = None) -> None:
+    def __init__(
+        self,
+        prompt_mfa: Callable[[], str] | None = None,
+        *,
+        resume_session: bool = True,
+    ) -> None:
         self.domain = "garmin.com"
         self._sso = f"https://sso.{self.domain}"
         self._connect = f"https://connect.{self.domain}"
@@ -91,29 +96,65 @@ class GarminClient:
         self._mfa_session: Any = None  # mobile_requests MFA session
 
         self.session_dir = Path(paths.session_dir())
-        self.session_dir.mkdir(parents=True, exist_ok=True)
-        self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
+        self._tokenstore_path: str | None = None
 
         resume_success = False
-        if Path(self._tokenstore_path).exists():
+        tokens_env = os.environ.get("GARMIN_TOKENS_JSON") if resume_session else None
+
+        if tokens_env:
             try:
-                self._load_tokens(self._tokenstore_path)
+                self._load_tokens_from_json(tokens_env)
                 self._load_profile()
                 resume_success = True
-                _LOGGER.info("Session resumed successfully from local token store.")
+                _LOGGER.info("Session side-loaded from GARMIN_TOKENS_JSON env var.")
             except (
-                OSError,
                 json.JSONDecodeError,
                 ValueError,
                 GarminAuthenticationError,
             ) as e:
                 _LOGGER.info(
-                    "Auth-resume failed (%s: %s). Triggering full login.",
+                    "GARMIN_TOKENS_JSON side-load failed (%s: %s). Falling back.",
                     type(e).__name__,
                     e,
                 )
-        else:
-            _LOGGER.info("No token file found. Triggering full login.")
+
+        # Only touch disk if env side-load did not already authenticate us.
+        if not resume_success:
+            try:
+                self.session_dir.mkdir(parents=True, exist_ok=True)
+                self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
+            except OSError as e:
+                _LOGGER.warning(
+                    "Session dir %s is not writable (%s); tokens not persisted.",
+                    self.session_dir,
+                    e,
+                )
+
+        if resume_session and not resume_success:
+            tokenstore_path = self._tokenstore_path
+            if tokenstore_path and Path(tokenstore_path).exists():
+                try:
+                    self._load_tokens(tokenstore_path)
+                    self._load_profile()
+                    resume_success = True
+                    _LOGGER.info("Session resumed successfully from local token store.")
+                except (
+                    OSError,
+                    json.JSONDecodeError,
+                    ValueError,
+                    GarminAuthenticationError,
+                ) as e:
+                    _LOGGER.info(
+                        "Auth-resume failed (%s: %s). Triggering full login.",
+                        type(e).__name__,
+                        e,
+                    )
+            elif not tokens_env:
+                _LOGGER.info("No token file found. Triggering full login.")
+        elif not resume_session:
+            _LOGGER.info(
+                "resume_session=False; skipping session resume, forcing fresh login."
+            )
 
         if not resume_success:
             load_dotenv()
@@ -135,10 +176,23 @@ class GarminClient:
                 )
                 self._resume_login_chain(mfa_code)
 
-            self._dump_tokens(self._tokenstore_path)
-            _LOGGER.info(
-                f"Login successful. Tokens persisted to {self._tokenstore_path}"
-            )
+            if self._tokenstore_path:
+                try:
+                    self._dump_tokens(self._tokenstore_path)
+                    _LOGGER.info(
+                        "Login successful. Tokens persisted to %s",
+                        self._tokenstore_path,
+                    )
+                except OSError as e:
+                    self._tokenstore_path = None
+                    _LOGGER.warning(
+                        "Failed to persist login tokens (%s); kept in memory.",
+                        e,
+                    )
+            else:
+                _LOGGER.info(
+                    "Login successful. Tokens kept in memory (no writable session dir)."
+                )
 
     # ------------------------------------------------------------------
     # Public API
@@ -226,6 +280,51 @@ class GarminClient:
 
         if not self.di_token:
             raise GarminAuthenticationError("Missing di_token in saved state.")
+
+    def _load_tokens_from_json(self, data: str) -> None:
+        parsed = json.loads(data)
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"GARMIN_TOKENS_JSON must be a JSON object, got {type(parsed).__name__}"
+            )
+        self.di_token = parsed.get("di_token")
+        self.di_refresh_token = parsed.get("di_refresh_token")
+        self.di_client_id = parsed.get("di_client_id")
+        missing = [
+            name
+            for name, value in (
+                ("di_token", self.di_token),
+                ("di_refresh_token", self.di_refresh_token),
+                ("di_client_id", self.di_client_id),
+            )
+            if not value
+        ]
+        if missing:
+            raise GarminAuthenticationError(
+                "GARMIN_TOKENS_JSON missing required fields: " + ", ".join(missing)
+            )
+
+    def export_session(self) -> str:
+        missing = [
+            name
+            for name, value in (
+                ("di_token", self.di_token),
+                ("di_refresh_token", self.di_refresh_token),
+                ("di_client_id", self.di_client_id),
+            )
+            if not value
+        ]
+        if missing:
+            raise GarminAuthenticationError(
+                "No active session to export (missing: " + ", ".join(missing) + ")."
+            )
+        return json.dumps(
+            {
+                "di_token": self.di_token,
+                "di_refresh_token": self.di_refresh_token,
+                "di_client_id": self.di_client_id,
+            }
+        )
 
     def _dump_tokens(self, path: str) -> None:
         data = json.dumps(
@@ -532,10 +631,15 @@ class GarminClient:
         if not self.di_token:
             return
         self._refresh_di_token()
-        try:
-            self._dump_tokens(self._tokenstore_path)
-        except Exception as e:
-            _LOGGER.warning(f"Failed to persist refreshed tokens: {e}")
+        if self._tokenstore_path:
+            try:
+                self._dump_tokens(self._tokenstore_path)
+            except OSError as e:
+                self._tokenstore_path = None
+                _LOGGER.warning(
+                    "Failed to persist refreshed tokens (%s); kept in memory.",
+                    e,
+                )
 
     def _sleep(self, seconds: float) -> None:
         """Sleep for the given duration. Isolated here so tests can stub it."""
