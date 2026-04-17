@@ -655,8 +655,8 @@ def test_init_resume_session_false_skips_disk_resume(mock_paths, monkeypatch, mo
 
 
 def test_init_env_sideload_does_not_mkdir(mock_paths, monkeypatch, mocker):
-    """When GARMIN_TOKENS_JSON side-load succeeds, session dir mkdir is still called
-    but only once during init — the env path does NOT re-enter the disk-mkdir block."""
+    """When GARMIN_TOKENS_JSON side-load succeeds, the session dir is never
+    touched — no mkdir and no _tokenstore_path set (Lambda-safe)."""
     token_data = {
         "di_token": "env_token",
         "di_refresh_token": "env_refresh",
@@ -673,11 +673,11 @@ def test_init_env_sideload_does_not_mkdir(mock_paths, monkeypatch, mocker):
 
     with patch.object(Path, "mkdir", tracking_mkdir):
         with patch.object(GarminClient, "_load_profile", return_value=None):
-            GarminClient()
+            client = GarminClient()
 
-    # mkdir should have been called exactly once for the session dir setup
     session_dir_mkdirs = [c for c in mkdir_calls if str(mock_paths) in c[0]]
-    assert len(session_dir_mkdirs) == 1
+    assert session_dir_mkdirs == []
+    assert client._tokenstore_path is None
 
 
 # ---------------------------------------------------------------------------

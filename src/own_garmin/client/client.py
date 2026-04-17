@@ -98,45 +98,41 @@ class GarminClient:
         self.session_dir = Path(paths.session_dir())
         self._tokenstore_path: str | None = None
 
-        # Always attempt to set up the session dir so fresh-login tokens can be
-        # persisted regardless of whether resume_session is True or False.
-        try:
-            self.session_dir.mkdir(parents=True, exist_ok=True)
-            self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
-        except OSError as e:
-            _LOGGER.warning(
-                "Session dir %s is not writable (%s); tokens will not be persisted.",
-                self.session_dir,
-                e,
-            )
-
         resume_success = False
+        tokens_env = os.environ.get("GARMIN_TOKENS_JSON") if resume_session else None
 
-        if resume_session:
-            tokens_env = os.environ.get("GARMIN_TOKENS_JSON")
-            if tokens_env:
-                try:
-                    self._load_tokens_from_json(tokens_env)
-                    self._load_profile()
-                    resume_success = True
-                    _LOGGER.info("Session side-loaded from GARMIN_TOKENS_JSON env var.")
-                except (
-                    json.JSONDecodeError,
-                    ValueError,
-                    GarminAuthenticationError,
-                ) as e:
-                    _LOGGER.info(
-                        "GARMIN_TOKENS_JSON side-load failed (%s: %s). Falling back.",
-                        type(e).__name__,
-                        e,
-                    )
+        if tokens_env:
+            try:
+                self._load_tokens_from_json(tokens_env)
+                self._load_profile()
+                resume_success = True
+                _LOGGER.info("Session side-loaded from GARMIN_TOKENS_JSON env var.")
+            except (
+                json.JSONDecodeError,
+                ValueError,
+                GarminAuthenticationError,
+            ) as e:
+                _LOGGER.info(
+                    "GARMIN_TOKENS_JSON side-load failed (%s: %s). Falling back.",
+                    type(e).__name__,
+                    e,
+                )
 
+        # Only touch disk if env side-load did not already authenticate us.
+        if not resume_success:
+            try:
+                self.session_dir.mkdir(parents=True, exist_ok=True)
+                self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
+            except OSError as e:
+                _LOGGER.warning(
+                    "Session dir %s is not writable (%s); tokens not persisted.",
+                    self.session_dir,
+                    e,
+                )
+
+        if resume_session and not resume_success:
             tokenstore_path = self._tokenstore_path
-            if (
-                not resume_success
-                and tokenstore_path
-                and Path(tokenstore_path).exists()
-            ):
+            if tokenstore_path and Path(tokenstore_path).exists():
                 try:
                     self._load_tokens(tokenstore_path)
                     self._load_profile()
@@ -153,9 +149,9 @@ class GarminClient:
                         type(e).__name__,
                         e,
                     )
-            elif not resume_success and not tokens_env:
+            elif not tokens_env:
                 _LOGGER.info("No token file found. Triggering full login.")
-        else:
+        elif not resume_session:
             _LOGGER.info(
                 "resume_session=False; skipping session resume, forcing fresh login."
             )
@@ -181,10 +177,18 @@ class GarminClient:
                 self._resume_login_chain(mfa_code)
 
             if self._tokenstore_path:
-                self._dump_tokens(self._tokenstore_path)
-                _LOGGER.info(
-                    f"Login successful. Tokens persisted to {self._tokenstore_path}"
-                )
+                try:
+                    self._dump_tokens(self._tokenstore_path)
+                    _LOGGER.info(
+                        "Login successful. Tokens persisted to %s",
+                        self._tokenstore_path,
+                    )
+                except OSError as e:
+                    self._tokenstore_path = None
+                    _LOGGER.warning(
+                        "Failed to persist login tokens (%s); kept in memory.",
+                        e,
+                    )
             else:
                 _LOGGER.info(
                     "Login successful. Tokens kept in memory (no writable session dir)."

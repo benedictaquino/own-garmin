@@ -1,5 +1,6 @@
 import functools
 import shutil
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -47,7 +48,18 @@ def login(
     if session.exists():
         shutil.rmtree(session)
 
-    prompt_mfa = NtfyMfaHandler().get_mfa_code if remote_mfa else None
+    def _stderr_mfa_prompt() -> str:
+        # Keep stdout clean for the exported JSON — route the prompt to stderr.
+        typer.echo("\nEnter Garmin MFA code: ", err=True, nl=False)
+        return input()
+
+    prompt_mfa: Callable[[], str] | None
+    if remote_mfa:
+        prompt_mfa = NtfyMfaHandler().get_mfa_code
+    elif export_session:
+        prompt_mfa = _stderr_mfa_prompt
+    else:
+        prompt_mfa = None
     client = GarminClient(prompt_mfa=prompt_mfa, resume_session=False)
 
     # When exporting, stdout is for token JSON only; all info goes to stderr.
