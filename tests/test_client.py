@@ -4,6 +4,7 @@ import json
 import time
 import zipfile
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -504,3 +505,87 @@ def test_ticket_re_extracts_ticket_single_quote():
 
 def test_ticket_re_no_match():
     assert _TICKET_RE.search('<a href="/other">') is None
+
+
+# ---------------------------------------------------------------------------
+# GARMIN_TOKENS_JSON side-loading
+# ---------------------------------------------------------------------------
+
+
+def test_init_with_tokens_json_env_sideloads(mock_paths, monkeypatch):
+    """GARMIN_TOKENS_JSON side-loads tokens without invoking login strategies."""
+    token_data = {
+        "di_token": "env_access_token",
+        "di_refresh_token": "env_refresh_token",
+        "di_client_id": "env_client_id",
+    }
+    monkeypatch.setenv("GARMIN_TOKENS_JSON", json.dumps(token_data))
+
+    with patch.object(GarminClient, "_load_profile", return_value=None):
+        with patch.object(GarminClient, "_login_chain", autospec=True) as m_login:
+            client = GarminClient()
+
+    assert client.di_token == "env_access_token"
+    m_login.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# export_session
+# ---------------------------------------------------------------------------
+
+
+def test_export_session_returns_json(authenticated_client):
+    """export_session returns JSON with all three token fields."""
+    raw = authenticated_client.export_session()
+    parsed = json.loads(raw)
+    assert parsed["di_token"] == "mock_access_token"
+    assert parsed["di_refresh_token"] == "mock_refresh_token"
+    assert parsed["di_client_id"] == "mock_client_id"
+
+
+def test_export_session_raises_when_unauthenticated(mock_paths):
+    """export_session raises GarminAuthenticationError when no token is set."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(
+        json.dumps(
+            {
+                "di_token": "some_token",
+                "di_refresh_token": "some_refresh",
+                "di_client_id": "some_client",
+            }
+        )
+    )
+    with patch.object(GarminClient, "_load_profile", return_value=None):
+        client = GarminClient()
+
+    client.di_token = None
+    with pytest.raises(GarminAuthenticationError, match="No active session"):
+        client.export_session()
+
+
+# ---------------------------------------------------------------------------
+# Unwritable session dir
+# ---------------------------------------------------------------------------
+
+
+def test_init_session_dir_unwritable_keeps_working(mock_paths, monkeypatch):
+    """Client constructs fine when session dir mkdir raises PermissionError."""
+    token_data = {
+        "di_token": "env_token",
+        "di_refresh_token": "env_refresh",
+        "di_client_id": "env_client",
+    }
+    monkeypatch.setenv("GARMIN_TOKENS_JSON", json.dumps(token_data))
+
+    original_mkdir = Path.mkdir
+
+    def failing_mkdir(self, *args, **kwargs):
+        if str(self) == str(mock_paths):
+            raise PermissionError("read-only filesystem")
+        return original_mkdir(self, *args, **kwargs)
+
+    with patch.object(Path, "mkdir", failing_mkdir):
+        with patch.object(GarminClient, "_load_profile", return_value=None):
+            client = GarminClient()
+
+    assert client._tokenstore_path is None
