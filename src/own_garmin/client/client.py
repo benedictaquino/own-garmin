@@ -91,11 +91,42 @@ class GarminClient:
         self._mfa_session: Any = None  # mobile_requests MFA session
 
         self.session_dir = Path(paths.session_dir())
-        self.session_dir.mkdir(parents=True, exist_ok=True)
-        self._tokenstore_path = str(self.session_dir / "garmin_tokens.json")
+        try:
+            self.session_dir.mkdir(parents=True, exist_ok=True)
+            self._tokenstore_path: str | None = str(
+                self.session_dir / "garmin_tokens.json"
+            )
+        except OSError as e:
+            _LOGGER.warning(
+                "Session dir %s is not writable (%s); tokens will not be persisted.",
+                self.session_dir,
+                e,
+            )
+            self._tokenstore_path = None
 
         resume_success = False
-        if Path(self._tokenstore_path).exists():
+        tokens_env = os.environ.get("GARMIN_TOKENS_JSON")
+        if tokens_env:
+            try:
+                self._load_tokens_from_json(tokens_env)
+                self._load_profile()
+                resume_success = True
+                _LOGGER.info("Session side-loaded from GARMIN_TOKENS_JSON env var.")
+            except (
+                json.JSONDecodeError,
+                ValueError,
+                GarminAuthenticationError,
+            ) as e:
+                _LOGGER.info(
+                    "GARMIN_TOKENS_JSON side-load failed (%s: %s). Falling back.",
+                    type(e).__name__,
+                    e,
+                )
+
+        tokenstore_exists = bool(
+            self._tokenstore_path and Path(self._tokenstore_path).exists()
+        )
+        if not resume_success and tokenstore_exists:
             try:
                 self._load_tokens(self._tokenstore_path)
                 self._load_profile()
@@ -112,7 +143,7 @@ class GarminClient:
                     type(e).__name__,
                     e,
                 )
-        else:
+        elif not resume_success and not tokens_env:
             _LOGGER.info("No token file found. Triggering full login.")
 
         if not resume_success:
@@ -135,10 +166,15 @@ class GarminClient:
                 )
                 self._resume_login_chain(mfa_code)
 
-            self._dump_tokens(self._tokenstore_path)
-            _LOGGER.info(
-                f"Login successful. Tokens persisted to {self._tokenstore_path}"
-            )
+            if self._tokenstore_path:
+                self._dump_tokens(self._tokenstore_path)
+                _LOGGER.info(
+                    f"Login successful. Tokens persisted to {self._tokenstore_path}"
+                )
+            else:
+                _LOGGER.info(
+                    "Login successful. Tokens kept in memory (no writable session dir)."
+                )
 
     # ------------------------------------------------------------------
     # Public API
@@ -226,6 +262,25 @@ class GarminClient:
 
         if not self.di_token:
             raise GarminAuthenticationError("Missing di_token in saved state.")
+
+    def _load_tokens_from_json(self, data: str) -> None:
+        parsed = json.loads(data)
+        self.di_token = parsed.get("di_token")
+        self.di_refresh_token = parsed.get("di_refresh_token")
+        self.di_client_id = parsed.get("di_client_id")
+        if not self.di_token:
+            raise GarminAuthenticationError("Missing di_token in GARMIN_TOKENS_JSON")
+
+    def export_session(self) -> str:
+        if not self.di_token:
+            raise GarminAuthenticationError("No active session to export.")
+        return json.dumps(
+            {
+                "di_token": self.di_token,
+                "di_refresh_token": self.di_refresh_token,
+                "di_client_id": self.di_client_id,
+            }
+        )
 
     def _dump_tokens(self, path: str) -> None:
         data = json.dumps(
@@ -532,10 +587,11 @@ class GarminClient:
         if not self.di_token:
             return
         self._refresh_di_token()
-        try:
-            self._dump_tokens(self._tokenstore_path)
-        except Exception as e:
-            _LOGGER.warning(f"Failed to persist refreshed tokens: {e}")
+        if self._tokenstore_path:
+            try:
+                self._dump_tokens(self._tokenstore_path)
+            except Exception as e:
+                _LOGGER.warning(f"Failed to persist refreshed tokens: {e}")
 
     def _sleep(self, seconds: float) -> None:
         """Sleep for the given duration. Isolated here so tests can stub it."""
