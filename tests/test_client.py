@@ -678,3 +678,50 @@ def test_init_env_sideload_does_not_mkdir(mock_paths, monkeypatch, mocker):
     # mkdir should have been called exactly once for the session dir setup
     session_dir_mkdirs = [c for c in mkdir_calls if str(mock_paths) in c[0]]
     assert len(session_dir_mkdirs) == 1
+
+
+# ---------------------------------------------------------------------------
+# _load_tokens_from_json shape validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("raw", ["null", "[]", "42", '"str"'])
+def test_load_tokens_from_json_rejects_non_object(mock_paths, raw):
+    """_load_tokens_from_json raises ValueError for non-dict JSON."""
+    token_file = mock_paths / "garmin_tokens.json"
+    token_file.write_text(
+        json.dumps(
+            {
+                "di_token": "tok",
+                "di_refresh_token": "r",
+                "di_client_id": "c",
+            }
+        )
+    )
+    with patch.object(GarminClient, "_load_profile", return_value=None):
+        client = GarminClient()
+
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        client._load_tokens_from_json(raw)
+
+
+def test_init_malformed_tokens_json_falls_back(mock_paths, monkeypatch):
+    """GARMIN_TOKENS_JSON='null' falls back to login rather than crashing."""
+    monkeypatch.setenv("GARMIN_TOKENS_JSON", "null")
+    monkeypatch.setenv("GARMIN_EMAIL", "test@example.com")
+    monkeypatch.setenv("GARMIN_PASSWORD", "secret123")
+
+    with patch.object(GarminClient, "_load_profile"):
+        with patch.object(GarminClient, "_login_chain", autospec=True) as m_login:
+
+            def side_effect(instance, email, password, **kwargs):
+                instance.di_token = "fresh_token"
+                instance.di_refresh_token = "fresh_refresh"
+                instance.di_client_id = "fresh_client"
+                return None, None
+
+            m_login.side_effect = side_effect
+            client = GarminClient()
+
+    m_login.assert_called_once()
+    assert client.di_token == "fresh_token"

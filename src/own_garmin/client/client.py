@@ -279,6 +279,10 @@ class GarminClient:
 
     def _load_tokens_from_json(self, data: str) -> None:
         parsed = json.loads(data)
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"GARMIN_TOKENS_JSON must be a JSON object, got {type(parsed).__name__}"
+            )
         self.di_token = parsed.get("di_token")
         self.di_refresh_token = parsed.get("di_refresh_token")
         self.di_client_id = parsed.get("di_client_id")
