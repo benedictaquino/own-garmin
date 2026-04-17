@@ -26,16 +26,34 @@ def _handle_errors(fn):
 
 @app.command()
 @_handle_errors
-def login() -> None:
+def login(
+    remote_mfa: bool = typer.Option(
+        False,
+        "--remote-mfa",
+        help="Use ntfy.sh for MFA code entry (requires NTFY_TOPIC)",
+    ),
+    export_session: bool = typer.Option(
+        False,
+        "--export-session",
+        help="Print refreshed GARMIN_TOKENS_JSON to stdout for orchestrators",
+    ),
+) -> None:
     """Force a fresh Garmin login and persist new session tokens."""
     from own_garmin import paths
     from own_garmin.client import GarminClient
+    from own_garmin.client.mfa_handlers import NtfyMfaHandler
 
     session = Path(paths.session_dir())
     if session.exists():
         shutil.rmtree(session)
-    client = GarminClient()
-    typer.echo(f"session: {client.session_dir}")
+
+    prompt_mfa = NtfyMfaHandler().get_mfa_code if remote_mfa else None
+    client = GarminClient(prompt_mfa=prompt_mfa)
+
+    # When exporting, stdout is for token JSON only; all info goes to stderr.
+    typer.echo(f"session: {client.session_dir}", err=export_session)
+    if export_session:
+        typer.echo(client.export_session())
 
 
 @app.command()
