@@ -18,6 +18,9 @@ dependencies = [
     "garmin-fit-sdk>=21.0",
 ]
 
+[project.optional-dependencies]
+s3 = ["boto3>=1.28.0"]
+
 [project.scripts]
 own-garmin = "own_garmin.cli:app"
 

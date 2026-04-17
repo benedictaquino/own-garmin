@@ -4,6 +4,8 @@ from datetime import date
 
 def data_root() -> str:
     path = os.environ.get("OWN_GARMIN_DATA_DIR", "./data")
+    if path.startswith("s3://"):
+        return path.rstrip("/")
     return os.path.expanduser(path)
 
 
