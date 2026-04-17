@@ -1,4 +1,4 @@
-# Implementation Plan: Garmin Lakehouse (v1.1 — Cloud Ready) - WIP DRAFT
+# Implementation Plan: Garmin Lakehouse (v1.1 — Cloud Ready)
 
 ## Context
 
@@ -96,6 +96,41 @@ All file I/O in `bronze/activities.py`, `bronze/activity_details.py`, `bronze/fi
 | `AWS_SECRET_ACCESS_KEY` | — | AWS credentials |
 | `AWS_SESSION_TOKEN` | — | AWS temporary credentials |
 | `AWS_REGION` | `us-east-1` | S3 region for DuckDB httpfs |
+
+## Crucial Considerations & Edge Cases
+
+### 1. DuckDB AWS Authentication
+
+DuckDB does not automatically inherit AWS credentials from the environment (unlike `boto3`). Loading `httpfs` alone is insufficient.
+
+* **Fix:** Load DuckDB's `aws` extension alongside `httpfs`.
+* **Implementation:** Run `LOAD aws;` then `CALL load_aws_credentials();` when initializing the DuckDB connection. This resolves standard AWS env vars (or IAM Task Roles on Fargate/Lambda) automatically — no manual `s3_access_key_id` parsing.
+
+### 2. Lambda's Read-Only Filesystem
+
+If deployed to AWS Lambda, the filesystem is read-only except for `/tmp` (512MB–10GB).
+
+* **DuckDB temp spills:** Complex queries that spill to disk will crash if DuckDB writes to the working directory. Add a cloud fallback: `SET temp_directory='/tmp/duckdb_temp';` when running in a cloud environment.
+* **Session dir fallback:** `OWN_GARMIN_SESSION_DIR` must fail gracefully or default to `/tmp` if `~/.config/` isn't writable in the container.
+
+### 3. `fsspec` / `s3fs` Alternative to Raw `boto3`
+
+Rather than hand-rolling `storage.py` on top of `pathlib` + `boto3`, consider `fsspec` (via the `s3fs` package).
+
+* **Why:** Provides a unified, Pythonic filesystem interface. A single call works transparently for both `s3://bucket/data.fit` and `./data/data.fit`, eliminating the bespoke `read_text`/`read_bytes` dispatch logic.
+* **Tradeoff:** Extra dependency, but significantly reduces boilerplate in `storage.py`.
+
+### 4. Token Rotation — stdout/stderr Hygiene
+
+`--export-session` prints refreshed tokens to stdout. In automated cloud execution (e.g. ECS cron), an orchestrator capturing stdout to route tokens back to AWS Secrets Manager is sensitive to log pollution.
+
+* **Safety net:** Application logs must route strictly to **stderr**; only the exported token JSON goes to **stdout**. Mixing the two breaks the orchestrator's parser.
+
+### 5. Security of `ntfy.sh` Topics
+
+Public `ntfy.sh` topics are unauthenticated — anyone who guesses the topic can subscribe. A UUID (128-bit entropy) is acceptable, but:
+
+* **Treat `NTFY_TOPIC` as a highly sensitive secret**, identical in importance to the Garmin password. Store it in the same secret store, never log it, and never commit it.
 
 ## Verification Workflow
 

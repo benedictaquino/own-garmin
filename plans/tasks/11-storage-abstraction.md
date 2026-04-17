@@ -66,6 +66,8 @@ def write_partitioned_parquet(df: pl.DataFrame, target: str, partition_by: list[
 
 **Lazy boto3 import**: Import `boto3` inside the S3 code paths only, not at module level.
 
+**Alternative considered — `fsspec` / `s3fs`:** A unified filesystem interface would let us write a single `open(path, "rb")` that transparently handles both `s3://bucket/key` and `./data/file`, eliminating the manual `is_s3`-based dispatch throughout this module. The tradeoff is an extra top-level dependency (`s3fs` pulls in `fsspec` + `aiobotocore`) and a heavier cloud runtime. We're sticking with raw `boto3` for v1.1 to keep the dependency surface minimal and the dispatch explicit, but this is worth revisiting if `storage.py` grows past ~200 lines or we need to support additional backends (GCS, Azure).
+
 ### 3. Add optional dependency to `pyproject.toml`
 
 ```toml

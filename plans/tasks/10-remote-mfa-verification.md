@@ -23,6 +23,12 @@ Verify the `ntfy.sh` remote MFA loop and session injection/export locally to ens
 
 * Add `--remote-mfa` flag to the `login` and `fetch` commands.
 * Add `--export-session` flag to print the refreshed `GARMIN_TOKENS_JSON` to stdout.
+* **stdout/stderr hygiene:** When `--export-session` is used, the exported token JSON is the **only** thing written to stdout. All informational logs (including "Waiting for MFA code...", progress, warnings) must go to **stderr**. Orchestrators (ECS cron, Lambda, shell pipelines) route captured stdout back to a secret store; mixing log lines with JSON breaks their parsers.
+
+### 2a. Secret Handling
+
+* Treat `NTFY_TOPIC` as a highly sensitive secret — equivalent in importance to the Garmin password. Public `ntfy.sh` topics are unauthenticated, so anyone who guesses the topic can intercept MFA prompts. A UUIDv4 (~128 bits of entropy) is acceptable, but store the topic in the same secret manager as credentials, never log it, and never commit it.
+* When running in a container with a read-only filesystem (e.g., Lambda), ensure `OWN_GARMIN_SESSION_DIR` falls back to `/tmp` if `~/.config/` is not writable, or that the caller sets it explicitly. Token persistence should not crash the process in cloud execution.
 
 ### 3. Verification Protocol (Manual)
 
@@ -51,3 +57,5 @@ Run the following test to simulate a headless environment on your local machine:
 * [ ] `GarminClient` resumes successfully using only `ntfy.sh` input.
 * [ ] Refreshed sessions can be "sideloaded" via environment variables.
 * [ ] No `input()` calls are triggered when `--remote-mfa` is active.
+* [ ] With `--export-session`, only the token JSON hits stdout; all logs go to stderr (verify with `own-garmin login --remote-mfa --export-session >tokens.json 2>logs.txt`).
+* [ ] `OWN_GARMIN_SESSION_DIR` writes do not crash when `~/.config/` is unavailable (cloud-safe fallback).

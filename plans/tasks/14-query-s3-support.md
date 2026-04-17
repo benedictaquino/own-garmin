@@ -33,17 +33,31 @@ if not storage.list_files(parquet_glob):
 
 Remove `import glob`. Add `from own_garmin import storage`.
 
-### 2. Load httpfs for S3 paths
+### 2. Load httpfs + aws extensions for S3 paths
 
-Before the table registration loop, check if data root is S3 and load httpfs:
+Before the table registration loop, check if data root is S3 and load both `httpfs` and `aws` extensions:
 
 ```python
 if storage.is_s3(paths.data_root()):
     con.install_extension("httpfs")
     con.load_extension("httpfs")
+    con.install_extension("aws")
+    con.load_extension("aws")
+    con.execute("CALL load_aws_credentials();")
 ```
 
-DuckDB auto-detects AWS credentials from environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) and instance profiles. No explicit credential configuration needed beyond loading the extension.
+**Why the `aws` extension is required:** DuckDB's `httpfs` alone does **not** automatically inherit AWS credentials from the environment the way `boto3` does. Without the `aws` extension and the `load_aws_credentials()` call, queries against `s3://` paths will fail with authentication errors even when `AWS_ACCESS_KEY_ID` etc. are set. The `aws` extension's `load_aws_credentials()` resolves credentials through the standard AWS provider chain — env vars, shared config, EC2 instance profile, and ECS/Fargate/Lambda task roles — so the same code works for local development and cloud execution.
+
+### 2a. Temp directory fallback for read-only filesystems
+
+DuckDB spills to disk during complex queries. On Lambda (read-only filesystem except `/tmp`) or other constrained runtimes, the default spill location will fail. When running in a cloud environment, set the temp directory explicitly:
+
+```python
+if storage.is_s3(paths.data_root()):
+    con.execute("SET temp_directory='/tmp/duckdb_temp';")
+```
+
+This is safe to apply unconditionally when data root is S3 — `/tmp` exists on Lambda, Fargate, and virtually any Linux container. Skip the setting for local runs so developers don't pollute `/tmp` on their workstations.
 
 ### 3. Verify glob pattern works with DuckDB
 
@@ -54,6 +68,8 @@ No changes needed to `paths.silver_glob()`.
 ## Acceptance Criteria
 
 * [ ] No `glob.glob` usage in `query.py`
-* [ ] httpfs extension loaded when data root is S3
+* [ ] `httpfs` and `aws` extensions loaded when data root is S3
+* [ ] `CALL load_aws_credentials();` is executed so IAM task roles / env vars are picked up automatically
+* [ ] `temp_directory` is set to `/tmp/duckdb_temp` when running against S3 (safe under Lambda's read-only filesystem)
 * [ ] `uv run pytest` passes — existing tests unaffected
 * [ ] `uv run ruff check .` passes
