@@ -81,6 +81,7 @@ All file I/O in `bronze/activities.py`, `bronze/activity_details.py`, `bronze/fi
 4. `13-silver-s3-migration.md` — Migrate silver modules to use `storage.*` calls.
 5. `14-query-s3-support.md` — Add httpfs loading and `storage.list_files()` to query layer.
 6. `15-containerization.md` — Dockerfile, .dockerignore, and end-to-end container verification.
+7. `16-minio-e2e.md` — Local MinIO-backed end-to-end verification of the S3 path (storage, bronze, silver, query, container).
 
 ## Environment Variables
 
@@ -96,6 +97,7 @@ All file I/O in `bronze/activities.py`, `bronze/activity_details.py`, `bronze/fi
 | `AWS_SECRET_ACCESS_KEY` | — | AWS credentials |
 | `AWS_SESSION_TOKEN` | — | AWS temporary credentials |
 | `AWS_REGION` | `us-east-1` | S3 region for DuckDB httpfs |
+| `AWS_ENDPOINT_URL_S3` | — | Override S3 endpoint (e.g. `http://localhost:9000` for MinIO). Auto-honored by boto3 ≥ 1.34.52. |
 
 ## Crucial Considerations & Edge Cases
 
@@ -126,7 +128,18 @@ Rather than hand-rolling `storage.py` on top of `pathlib` + `boto3`, consider `f
 
 * **Safety net:** Application logs must route strictly to **stderr**; only the exported token JSON goes to **stdout**. Mixing the two breaks the orchestrator's parser.
 
-### 5. Security of `ntfy.sh` Topics
+### 5. S3-Compatible Endpoints (MinIO) for Local Testing
+
+Real AWS S3 costs money, leaks test data to a cloud account, and makes CI slow. A local **MinIO** container gives a production-grade S3-compatible endpoint with zero cost and hermetic test runs — strictly better than `moto` mocks (which re-implement the API surface and drift from real behavior) and lighter than LocalStack.
+
+Two code surfaces need to accept a custom endpoint:
+
+* **`boto3` (storage layer).** Since boto3 ≥ 1.34.52, the client auto-honors `AWS_ENDPOINT_URL_S3`. Bumping the `s3` optional dep floor to `boto3>=1.34.52` lets `storage.py` stay endpoint-agnostic — no code change needed, just set the env var.
+* **DuckDB `httpfs` (query layer).** The extension needs `SET s3_endpoint`, `SET s3_url_style='path'`, and `SET s3_use_ssl=false` for MinIO over HTTP. Task 14 should read `AWS_ENDPOINT_URL_S3` and, when present, emit these settings after `load_aws_credentials()`.
+
+MinIO defaults: access key `minioadmin`, secret `minioadmin`, endpoint `http://localhost:9000`. Treat these as test-only — never share a MinIO bucket between test and prod workflows.
+
+### 6. Security of `ntfy.sh` Topics
 
 Public `ntfy.sh` topics are unauthenticated — anyone who guesses the topic can subscribe. A UUID (128-bit entropy) is acceptable, but:
 
@@ -144,9 +157,13 @@ Public `ntfy.sh` topics are unauthenticated — anyone who guesses the topic can
 ### S3 Storage
 
 1. `uv run pytest` — all existing tests pass (local regression).
-2. Set `OWN_GARMIN_DATA_DIR=s3://test-bucket/garmin` and run `own-garmin ingest` + `own-garmin process` against localstack or real S3.
-3. Run `own-garmin query "SELECT count(*) FROM activities"` with S3-backed data.
-4. `uv run pytest tests/test_storage.py` — new storage unit tests pass.
+2. `uv run pytest tests/test_storage.py` — new storage unit tests pass.
+3. **MinIO-backed e2e (preferred local path — see Task 16):**
+   1. `docker compose up -d minio` and bootstrap the test bucket.
+   2. Export `AWS_ENDPOINT_URL_S3=http://localhost:9000`, `AWS_ACCESS_KEY_ID=minioadmin`, `AWS_SECRET_ACCESS_KEY=minioadmin`, `OWN_GARMIN_DATA_DIR=s3://own-garmin-test/garmin`.
+   3. Run `own-garmin ingest --since 2026-01-01` + `own-garmin process` + `own-garmin query "SELECT count(*) FROM activities"`.
+   4. Inspect objects via the MinIO console (`http://localhost:9001`) to confirm hive partitioning.
+4. **Real S3 smoke test (optional):** repeat step 3 against a scratch AWS S3 bucket without `AWS_ENDPOINT_URL_S3` set — confirms nothing was MinIO-specific.
 
 ### Container
 
