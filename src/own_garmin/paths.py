@@ -1,5 +1,7 @@
 import os
+import tempfile
 from datetime import date
+from pathlib import Path
 
 
 def data_root() -> str:
@@ -35,4 +37,6 @@ def silver_glob(category: str) -> str:
 
 
 def duckdb_temp_dir() -> str:
-    return "/tmp/duckdb_temp"
+    path = Path(tempfile.gettempdir()) / "duckdb_temp"
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return str(path)
