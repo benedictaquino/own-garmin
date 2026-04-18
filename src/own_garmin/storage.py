@@ -100,13 +100,22 @@ def exists(path: str) -> bool:
         import boto3
         from botocore.exceptions import ClientError
 
+        s3 = boto3.client("s3")
         bucket, key = _parse_s3(path)
         try:
-            boto3.client("s3").head_object(Bucket=bucket, Key=key)
+            s3.head_object(Bucket=bucket, Key=key)
             return True
         except ClientError as exc:
             if exc.response["Error"]["Code"] in ("404", "NoSuchKey"):
-                return False
+                prefix = key.rstrip("/")
+                if not prefix:
+                    return False
+                probe = s3.list_objects_v2(
+                    Bucket=bucket,
+                    Prefix=f"{prefix}/",
+                    MaxKeys=1,
+                )
+                return probe.get("KeyCount", 0) > 0
             raise
     return Path(path).exists()
 
@@ -122,6 +131,9 @@ def list_files(pattern: str) -> list[str]:
     """
     if is_s3(pattern):
         import boto3
+
+        if "*" not in pattern:
+            return [pattern] if exists(pattern) else []
 
         # Split at first wildcard to derive bucket and prefix
         star_idx = pattern.index("*")
