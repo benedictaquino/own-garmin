@@ -1,5 +1,7 @@
 import os
+import tempfile
 from datetime import date
+from pathlib import Path
 
 
 def data_root() -> str:
@@ -32,3 +34,9 @@ def silver_path(category: str) -> str:
 
 def silver_glob(category: str) -> str:
     return f"{silver_path(category)}/**/*.parquet"
+
+
+def duckdb_temp_dir() -> str:
+    path = Path(tempfile.gettempdir()) / "duckdb_temp"
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return str(path)
