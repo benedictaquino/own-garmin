@@ -111,7 +111,8 @@ def rebuild() -> int:
 
 def _decode_zip(zip_path: str) -> pl.DataFrame | None:
     try:
-        activity_id = int(zip_path.rsplit("/", 1)[-1].split(".")[0])
+        filename = zip_path.replace("\\", "/").rsplit("/", 1)[-1]
+        activity_id = int(filename.rsplit(".", 1)[0])
     except ValueError:
         _LOGGER.warning("FIT ZIP %s has non-integer stem, skipping", zip_path)
         return None
