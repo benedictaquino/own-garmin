@@ -1,10 +1,8 @@
-import glob
-import shutil
-from pathlib import Path
+import io
 
 import polars as pl
 
-from own_garmin import paths
+from own_garmin import paths, storage
 
 _DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -29,7 +27,9 @@ _SCHEMA = {
 
 def transform(bronze_json_paths: list[str]) -> pl.DataFrame:
     """Transform activity summaries from bronze JSON into a typed DataFrame."""
-    frames = [pl.read_json(p) for p in bronze_json_paths]
+    frames = [
+        pl.read_json(io.BytesIO(storage.read_bytes(p))) for p in bronze_json_paths
+    ]
     if not frames:
         return _empty_frame()
 
@@ -81,11 +81,11 @@ def transform(bronze_json_paths: list[str]) -> pl.DataFrame:
 def rebuild() -> int:
     """Rebuild activities silver from bronze JSON. Returns row count written."""
     pattern = f"{paths.data_root()}/bronze/activities/**/*.json"
-    files = sorted(glob.glob(pattern, recursive=True))
+    files = storage.list_files(pattern)
     df = transform(files)
 
     target = paths.silver_path("activities")
-    shutil.rmtree(target, ignore_errors=True)
+    storage.rmtree(target)
     if df.height == 0:
         return 0
 
@@ -94,8 +94,7 @@ def rebuild() -> int:
         pl.col("month").cast(pl.Utf8).str.zfill(2),
     )
 
-    Path(target).mkdir(parents=True, exist_ok=True)
-    df.write_parquet(target, partition_by=["year", "month"])
+    storage.write_partitioned_parquet(df, target, ["year", "month"])
     return df.height
 
 

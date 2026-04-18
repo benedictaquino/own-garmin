@@ -1,13 +1,11 @@
-import glob
+import io
 import logging
-import shutil
 import zipfile
-from pathlib import Path
 
 import polars as pl
 from garmin_fit_sdk import Decoder, Stream
 
-from own_garmin import paths
+from own_garmin import paths, storage
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,28 +97,29 @@ def transform(fit_zip_paths: list[str]) -> pl.DataFrame:
 def rebuild() -> int:
     """Rebuild fit_records silver from bronze FIT ZIPs. Returns row count."""
     pattern = f"{paths.data_root()}/bronze/fit/**/*.zip"
-    files = sorted(glob.glob(pattern, recursive=True))
+    files = storage.list_files(pattern)
     df = transform(files)
 
     target = paths.silver_path("fit_records")
-    shutil.rmtree(target, ignore_errors=True)
+    storage.rmtree(target)
     if df.height == 0:
         return 0
 
-    Path(target).mkdir(parents=True, exist_ok=True)
-    df.write_parquet(target, partition_by=["year", "month"])
+    storage.write_partitioned_parquet(df, target, ["year", "month"])
     return df.height
 
 
 def _decode_zip(zip_path: str) -> pl.DataFrame | None:
     try:
-        activity_id = int(Path(zip_path).stem)
+        filename = zip_path.replace("\\", "/").rsplit("/", 1)[-1]
+        activity_id = int(filename.rsplit(".", 1)[0])
     except ValueError:
         _LOGGER.warning("FIT ZIP %s has non-integer stem, skipping", zip_path)
         return None
 
     try:
-        with zipfile.ZipFile(zip_path) as zf:
+        zip_data = storage.read_bytes(zip_path)
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
             fit_names = [n for n in zf.namelist() if n.endswith(".fit")]
             if not fit_names:
                 _LOGGER.warning("FIT ZIP %s contains no .fit file, skipping", zip_path)
@@ -131,7 +130,7 @@ def _decode_zip(zip_path: str) -> pl.DataFrame | None:
         return None
 
     try:
-        messages, errors = Decoder(Stream.from_byte_array(fit_bytes)).read()
+        messages, errors = Decoder(Stream.from_byte_array(bytearray(fit_bytes))).read()
     except Exception as exc:
         _LOGGER.warning("FIT decode failed for %s (%s), skipping", zip_path, exc)
         return None
