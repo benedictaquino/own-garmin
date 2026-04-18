@@ -22,7 +22,9 @@ def query(sql: str) -> pl.DataFrame:
             endpoint = os.environ.get("AWS_ENDPOINT_URL_S3")
             if endpoint:
                 parsed = urlparse(endpoint)
-                host = parsed.netloc or parsed.path
+                host = parsed.hostname or parsed.path
+                if parsed.port:
+                    host = f"{host}:{parsed.port}"
                 use_ssl = parsed.scheme.lower() == "https"
                 con.execute(f"SET s3_endpoint='{host}';")
                 con.execute("SET s3_url_style='path';")
