@@ -129,7 +129,7 @@ def _decode_zip(zip_path: str) -> pl.DataFrame | None:
         return None
 
     try:
-        messages, errors = Decoder(Stream.from_byte_array(fit_bytes)).read()
+        messages, errors = Decoder(Stream.from_byte_array(bytearray(fit_bytes))).read()
     except Exception as exc:
         _LOGGER.warning("FIT decode failed for %s (%s), skipping", zip_path, exc)
         return None
