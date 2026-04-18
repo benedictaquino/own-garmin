@@ -32,3 +32,7 @@ def silver_path(category: str) -> str:
 
 def silver_glob(category: str) -> str:
     return f"{silver_path(category)}/**/*.parquet"
+
+
+def duckdb_temp_dir() -> str:
+    return "/tmp/duckdb_temp"

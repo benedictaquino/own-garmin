@@ -16,7 +16,7 @@ def query(sql: str) -> pl.DataFrame:
             con.install_extension("aws")
             con.load_extension("aws")
             con.execute("CALL load_aws_credentials();")
-            con.execute("SET temp_directory='/tmp/duckdb_temp';")
+            con.execute(f"SET temp_directory='{paths.duckdb_temp_dir()}';")
 
         registered: list[str] = []
         for name in _SILVER_TABLES:
