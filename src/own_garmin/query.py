@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse
 
 import duckdb
 import polars as pl
@@ -20,8 +21,9 @@ def query(sql: str) -> pl.DataFrame:
             con.execute("CALL load_aws_credentials();")
             endpoint = os.environ.get("AWS_ENDPOINT_URL_S3")
             if endpoint:
-                host = endpoint.split("://", 1)[-1].rstrip("/")
-                use_ssl = endpoint.startswith("https://")
+                parsed = urlparse(endpoint)
+                host = parsed.netloc or parsed.path
+                use_ssl = parsed.scheme.lower() == "https"
                 con.execute(f"SET s3_endpoint='{host}';")
                 con.execute("SET s3_url_style='path';")
                 con.execute(f"SET s3_use_ssl={'true' if use_ssl else 'false'};")

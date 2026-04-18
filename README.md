@@ -37,7 +37,7 @@ uv run own-garmin query "SELECT activity_type, COUNT(*) AS n FROM activities GRO
 
 ## Testing against MinIO
 
-MinIO is a local S3-compatible server that lets you exercise the full S3 code path without AWS credentials.
+MinIO is a local S3-compatible server that lets you exercise the full S3 code path without an AWS account. (MinIO has its own test credentials, set below.)
 
 ### 1. Start MinIO and create the test bucket
 
@@ -67,9 +67,7 @@ uv run own-garmin query "SELECT activity_type, COUNT(*) AS n FROM activities GRO
 
 ### 4. Inspect objects in the MinIO console
 
-```bash
-open http://localhost:9001   # login: minioadmin / minioadmin
-```
+Open <http://localhost:9001> in your browser (login: `minioadmin` / `minioadmin`).
 
 Expected objects under `own-garmin-test/garmin/`:
 
