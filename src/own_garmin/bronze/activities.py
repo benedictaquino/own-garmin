@@ -18,7 +18,8 @@ def ingest(activities: list[dict]) -> int:
         existing: dict[int, dict] = {}
         if storage.exists(path):
             for a in json.loads(storage.read_text(path)):
-                existing[a["activityId"]] = a
+                if "activityId" in a:
+                    existing[a["activityId"]] = a
 
         for a in new_activities:
             existing[a["activityId"]] = a  # new wins on conflict
