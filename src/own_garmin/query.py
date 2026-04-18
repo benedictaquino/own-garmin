@@ -1,3 +1,5 @@
+import os
+
 import duckdb
 import polars as pl
 
@@ -16,6 +18,13 @@ def query(sql: str) -> pl.DataFrame:
             con.install_extension("aws")
             con.load_extension("aws")
             con.execute("CALL load_aws_credentials();")
+            endpoint = os.environ.get("AWS_ENDPOINT_URL_S3")
+            if endpoint:
+                host = endpoint.split("://", 1)[-1].rstrip("/")
+                use_ssl = endpoint.startswith("https://")
+                con.execute(f"SET s3_endpoint='{host}';")
+                con.execute("SET s3_url_style='path';")
+                con.execute(f"SET s3_use_ssl={'true' if use_ssl else 'false'};")
             con.execute(f"SET temp_directory='{paths.duckdb_temp_dir()}';")
 
         registered: list[str] = []
