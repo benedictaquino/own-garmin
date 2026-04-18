@@ -74,6 +74,16 @@ def test_silver_glob_default_root():
     assert result == "./data/silver/activities/**/*.parquet"
 
 
+def test_data_root_s3_uri_unchanged(monkeypatch):
+    monkeypatch.setenv("OWN_GARMIN_DATA_DIR", "s3://my-bucket/garmin-data")
+    assert paths.data_root() == "s3://my-bucket/garmin-data"
+
+
+def test_data_root_s3_uri_trailing_slash_stripped(monkeypatch):
+    monkeypatch.setenv("OWN_GARMIN_DATA_DIR", "s3://my-bucket/garmin-data/")
+    assert paths.data_root() == "s3://my-bucket/garmin-data"
+
+
 def test_paths_return_strings(monkeypatch):
     monkeypatch.setenv("OWN_GARMIN_DATA_DIR", "/tmp/foo")
     assert isinstance(paths.data_root(), str)
