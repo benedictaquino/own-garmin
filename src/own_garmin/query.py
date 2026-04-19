@@ -18,7 +18,8 @@ def query(sql: str) -> pl.DataFrame:
             con.load_extension("httpfs")
             con.install_extension("aws")
             con.load_extension("aws")
-            con.execute("CALL load_aws_credentials();")
+
+            fields = ["TYPE s3", "PROVIDER credential_chain"]
             endpoint = os.environ.get("AWS_ENDPOINT_URL_S3")
             if endpoint:
                 parsed = urlparse(endpoint)
@@ -26,9 +27,19 @@ def query(sql: str) -> pl.DataFrame:
                 if parsed.port:
                     host = f"{host}:{parsed.port}"
                 use_ssl = parsed.scheme.lower() == "https"
-                con.execute(f"SET s3_endpoint='{host}';")
-                con.execute("SET s3_url_style='path';")
-                con.execute(f"SET s3_use_ssl={'true' if use_ssl else 'false'};")
+                region = os.environ.get("AWS_REGION", "us-east-1")
+                safe_host = host.replace("'", "''")
+                safe_region = region.replace("'", "''")
+                fields.extend(
+                    [
+                        f"ENDPOINT '{safe_host}'",
+                        "URL_STYLE 'path'",
+                        f"USE_SSL {'true' if use_ssl else 'false'}",
+                        f"REGION '{safe_region}'",
+                    ]
+                )
+            secret_fields = ", ".join(fields)
+            con.execute(f"CREATE OR REPLACE SECRET own_garmin_s3 ({secret_fields});")
             con.execute(f"SET temp_directory='{paths.duckdb_temp_dir()}';")
 
         registered: list[str] = []
