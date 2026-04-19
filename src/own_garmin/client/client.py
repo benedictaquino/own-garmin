@@ -200,10 +200,26 @@ class GarminClient:
 
     def list_activities(self, start: date, end: date) -> list[dict]:
         """Fetch summary dicts of activities within a date range."""
-        return self._connectapi(
-            ACTIVITIES_URL,
-            params={"startDate": start.isoformat(), "endDate": end.isoformat()},
-        )
+        limit = 200
+        offset = 0
+        results: list[dict] = []
+        while True:
+            page = self._connectapi(
+                ACTIVITIES_URL,
+                params={
+                    "startDate": start.isoformat(),
+                    "endDate": end.isoformat(),
+                    "start": offset,
+                    "limit": limit,
+                },
+            )
+            if not isinstance(page, list) or not page:
+                break
+            results.extend(page)
+            if len(page) < limit:
+                break
+            offset += limit
+        return results
 
     def get_activity(self, activity_id: int) -> dict:
         """Fetch the full summary dictionary for a specific activity."""
