@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented. The ingestion library choice was later superseded by [ADR-002](ADR-002-in-house-client.md).
 
 ## Context
 
