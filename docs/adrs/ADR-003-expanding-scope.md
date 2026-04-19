@@ -38,7 +38,7 @@ We will expand the data extraction scope of `own-garmin` to include all accessib
 
 ### Positive
 
-* **Contextual Correlation:** Users can now correlate workout performance (from FIT files) with recovery metrics (Sleep/HRV) within the same DuckDB/Iceberg environment.
+* **Contextual Correlation:** Users can now correlate workout performance (from FIT files) with recovery metrics (Sleep/HRV) within the same DuckDB query environment.
 * **True Ownership:** Accomplishes the project goal of "owning" the full spectrum of data stored on Garmin's servers, not just training data.
 * **Enhanced Reporting:** Enables the creation of "Year in Review" or long-term health trend dashboards that go beyond simple mileage counts.
 
