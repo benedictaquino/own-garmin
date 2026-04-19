@@ -1,4 +1,4 @@
-# ADR 001: Local Data Lakehouse Architecture for Garmin Health Data
+# ADR-001: Local Data Lakehouse Architecture for Garmin Health Data
 
 ## Status
 
