@@ -163,16 +163,87 @@ def test_init_prompt_mfa_callback(mock_paths, mock_strategies, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_list_activities_api_call(authenticated_client, mocker):
-    """Verify list_activities calls _connectapi with the correct path and params."""
-    mock_api = mocker.patch.object(authenticated_client, "_connectapi")
+def test_list_activities_single_page(authenticated_client, mocker):
+    """Single page (fewer than 200 results): one _connectapi call, returns the list."""
+    activities = [{"activityId": i} for i in range(5)]
+    mock_api = mocker.patch.object(
+        authenticated_client, "_connectapi", side_effect=[activities]
+    )
 
-    authenticated_client.list_activities(date(2026, 1, 1), date(2026, 1, 2))
+    result = authenticated_client.list_activities(date(2026, 1, 1), date(2026, 1, 2))
 
+    assert result == activities
     mock_api.assert_called_once_with(
         "/activitylist-service/activities/search/activities",
-        params={"startDate": "2026-01-01", "endDate": "2026-01-02"},
+        params={
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-02",
+            "start": 0,
+            "limit": 200,
+        },
     )
+
+
+def test_list_activities_multi_page(authenticated_client, mocker):
+    """Multi-page: concatenates results and advances offset correctly."""
+    page1 = [{"activityId": i} for i in range(200)]
+    page2 = [{"activityId": i} for i in range(200, 250)]
+    mock_api = mocker.patch.object(
+        authenticated_client, "_connectapi", side_effect=[page1, page2]
+    )
+
+    result = authenticated_client.list_activities(date(2026, 1, 1), date(2026, 3, 31))
+
+    assert result == page1 + page2
+    assert mock_api.call_count == 2
+    mock_api.assert_any_call(
+        "/activitylist-service/activities/search/activities",
+        params={
+            "startDate": "2026-01-01",
+            "endDate": "2026-03-31",
+            "start": 0,
+            "limit": 200,
+        },
+    )
+    mock_api.assert_any_call(
+        "/activitylist-service/activities/search/activities",
+        params={
+            "startDate": "2026-01-01",
+            "endDate": "2026-03-31",
+            "start": 200,
+            "limit": 200,
+        },
+    )
+
+
+def test_list_activities_empty_first_page(authenticated_client, mocker):
+    """Empty first response: returns [] with only one _connectapi call."""
+    mock_api = mocker.patch.object(
+        authenticated_client, "_connectapi", side_effect=[[]]
+    )
+
+    result = authenticated_client.list_activities(date(2026, 1, 1), date(2026, 1, 2))
+
+    assert result == []
+    mock_api.assert_called_once_with(
+        "/activitylist-service/activities/search/activities",
+        params={
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-02",
+            "start": 0,
+            "limit": 200,
+        },
+    )
+
+
+def test_list_activities_raises_on_non_list(authenticated_client, mocker):
+    """Non-list, non-empty response raises GarminConnectionError."""
+    mocker.patch.object(
+        authenticated_client, "_connectapi", return_value={"error": "oops"}
+    )
+
+    with pytest.raises(GarminConnectionError):
+        authenticated_client.list_activities(date(2026, 1, 1), date(2026, 1, 2))
 
 
 def test_get_activity_api_call(authenticated_client, mocker):
