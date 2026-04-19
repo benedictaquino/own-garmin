@@ -213,8 +213,13 @@ class GarminClient:
                     "limit": limit,
                 },
             )
-            if not isinstance(page, list) or not page:
+            if not page:
                 break
+            if not isinstance(page, list):
+                raise GarminConnectionError(
+                    f"list_activities expected list at offset {offset},"
+                    f" got {type(page).__name__}"
+                )
             results.extend(page)
             if len(page) < limit:
                 break

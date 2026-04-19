@@ -225,7 +225,25 @@ def test_list_activities_empty_first_page(authenticated_client, mocker):
     result = authenticated_client.list_activities(date(2026, 1, 1), date(2026, 1, 2))
 
     assert result == []
-    mock_api.assert_called_once()
+    mock_api.assert_called_once_with(
+        "/activitylist-service/activities/search/activities",
+        params={
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-02",
+            "start": 0,
+            "limit": 200,
+        },
+    )
+
+
+def test_list_activities_raises_on_non_list(authenticated_client, mocker):
+    """Non-list, non-empty response raises GarminConnectionError."""
+    mocker.patch.object(
+        authenticated_client, "_connectapi", return_value={"error": "oops"}
+    )
+
+    with pytest.raises(GarminConnectionError):
+        authenticated_client.list_activities(date(2026, 1, 1), date(2026, 1, 2))
 
 
 def test_get_activity_api_call(authenticated_client, mocker):
