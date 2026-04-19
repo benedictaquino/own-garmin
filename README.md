@@ -21,10 +21,19 @@ Run the pipeline:
 
 ```bash
 uv run own-garmin login                  # authenticate and persist session token
-uv run own-garmin ingest --since 2025-01-01   # pull raw JSON from Garmin Connect
-uv run own-garmin process                # transform Bronze JSON → Silver Parquet
+uv run own-garmin ingest --since 2025-01-01   # pull activity summaries, details, and FIT files into bronze
+uv run own-garmin process                # build Silver Parquet: activities summary + fit_records per-sample tables
 uv run own-garmin query "SELECT activity_type, COUNT(*) AS n FROM activities GROUP BY 1 ORDER BY n DESC"
 ```
+
+The `fit_records` view is also available in queries when FIT files have been ingested and processed.
+
+### Remote MFA
+
+If your Garmin account has MFA enabled, login is interactive by default. Two alternatives for non-interactive or remote environments:
+
+- `own-garmin login --remote-mfa` — publishes an MFA prompt to an ntfy.sh topic and polls for the 6-digit reply. Requires the `NTFY_TOPIC` env var.
+- `own-garmin login --export-session` — prints a `GARMIN_TOKENS_JSON` value to stdout after login. Pass this to subsequent container or CI runs via the `GARMIN_TOKENS_JSON` env var to skip the login flow entirely.
 
 ### Environment variables
 
@@ -34,6 +43,21 @@ uv run own-garmin query "SELECT activity_type, COUNT(*) AS n FROM activities GRO
 | `GARMIN_PASSWORD` | — | Garmin Connect login |
 | `OWN_GARMIN_DATA_DIR` | `./data` | Root for bronze/silver layers |
 | `OWN_GARMIN_SESSION_DIR` | `~/.config/own-garmin/session` | Token persistence |
+
+## Running via Docker
+
+Build the image and run the pipeline without a local Python environment:
+
+```bash
+docker build -t own-garmin .
+docker run --rm \
+  -e GARMIN_EMAIL \
+  -e GARMIN_PASSWORD \
+  -v $(pwd)/data:/app/data \
+  own-garmin ingest --since 2025-01-01
+```
+
+The image includes the `s3` extra, so `OWN_GARMIN_DATA_DIR=s3://…` works without any additional setup.
 
 ## Testing against MinIO
 
@@ -73,3 +97,8 @@ Expected objects under `own-garmin-test/garmin/`:
 
 - `bronze/activities/year=YYYY/month=MM/day=DD.json`
 - `silver/activities/year=YYYY/month=MM/data.parquet`
+
+## Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — detailed architecture overview: layers, module map, storage abstraction, authentication flow, and deployment.
+- [`docs/adrs/ADR-001-garmin-lakehouse.md`](docs/adrs/ADR-001-garmin-lakehouse.md) — original architecture decision record.

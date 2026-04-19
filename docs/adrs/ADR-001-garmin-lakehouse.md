@@ -1,8 +1,8 @@
-# ADR 001: Local Data Lakehouse Architecture for Garmin Health Data
+# ADR-001: Local Data Lakehouse Architecture for Garmin Health Data
 
 ## Status
 
-Proposed
+Implemented. The ingestion library choice was later superseded by [ADR-002](ADR-002-in-house-client.md).
 
 ## Context
 
