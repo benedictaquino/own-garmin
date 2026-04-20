@@ -49,3 +49,7 @@ testpaths = ["tests"]
 [tool.sqlfluff.core]
 dialect = "duckdb"
 templater = "jinja"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
