@@ -16,12 +16,27 @@ def test_help_lists_all_commands():
         assert cmd in result.output
 
 
-def test_process_calls_rebuild_and_prints_count():
-    with patch("own_garmin.silver.activities.rebuild", return_value=42) as mock_rebuild:
+def test_process_calls_all_rebuilds_and_prints_counts():
+    with (
+        patch(
+            "own_garmin.silver.activities.rebuild", return_value=42
+        ) as mock_activities,
+        patch("own_garmin.silver.fit_records.rebuild", return_value=10) as mock_fit,
+        patch(
+            "own_garmin.silver.activity_metrics.rebuild", return_value=500
+        ) as mock_metrics,
+    ):
         result = runner.invoke(app, ["process"])
     assert result.exit_code == 0
-    mock_rebuild.assert_called_once()
+    mock_activities.assert_called_once()
+    mock_fit.assert_called_once()
+    mock_metrics.assert_called_once()
     assert "42" in result.output
+    assert "10" in result.output
+    assert "500" in result.output
+    assert "Silver activities:" in result.output
+    assert "Silver fit_records:" in result.output
+    assert "Silver activity_metrics:" in result.output
 
 
 def test_process_error_exits_nonzero():
