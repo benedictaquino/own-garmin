@@ -1,6 +1,4 @@
-import io
 import logging
-import zipfile
 
 import polars as pl
 from garmin_fit_sdk import Decoder, Stream
@@ -52,11 +50,11 @@ _OUTPUT_SCHEMA = {
 }
 
 
-def transform(fit_zip_paths: list[str]) -> pl.DataFrame:
-    """Transform FIT ZIPs into per-second telemetry rows."""
+def transform(fit_paths: list[str]) -> pl.DataFrame:
+    """Transform FIT files into per-second telemetry rows."""
     frames: list[pl.DataFrame] = []
-    for zip_path in fit_zip_paths:
-        df = _decode_zip(zip_path)
+    for fit_path in fit_paths:
+        df = _decode_fit(fit_path)
         if df is not None and df.height > 0:
             frames.append(df)
 
@@ -109,34 +107,28 @@ def rebuild() -> int:
     return df.height
 
 
-def _decode_zip(zip_path: str) -> pl.DataFrame | None:
+def _decode_fit(fit_path: str) -> pl.DataFrame | None:
     try:
-        filename = zip_path.replace("\\", "/").rsplit("/", 1)[-1]
+        filename = fit_path.replace("\\", "/").rsplit("/", 1)[-1]
         activity_id = int(filename.rsplit(".", 1)[0])
     except ValueError:
-        _LOGGER.warning("FIT ZIP %s has non-integer stem, skipping", zip_path)
+        _LOGGER.warning("FIT file %s has non-integer stem, skipping", fit_path)
         return None
 
     try:
-        zip_data = storage.read_bytes(zip_path)
-        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
-            fit_names = [n for n in zf.namelist() if n.endswith(".fit")]
-            if not fit_names:
-                _LOGGER.warning("FIT ZIP %s contains no .fit file, skipping", zip_path)
-                return None
-            fit_bytes = zf.read(fit_names[0])
-    except (zipfile.BadZipFile, OSError) as exc:
-        _LOGGER.warning("FIT ZIP %s unreadable (%s), skipping", zip_path, exc)
+        fit_bytes = storage.read_bytes(fit_path)
+    except OSError as exc:
+        _LOGGER.warning("FIT file %s unreadable (%s), skipping", fit_path, exc)
         return None
 
     try:
         messages, errors = Decoder(Stream.from_byte_array(bytearray(fit_bytes))).read()
     except Exception as exc:
-        _LOGGER.warning("FIT decode failed for %s (%s), skipping", zip_path, exc)
+        _LOGGER.warning("FIT decode failed for %s (%s), skipping", fit_path, exc)
         return None
 
     if errors:
-        _LOGGER.warning("FIT decode errors for %s: %s, skipping", zip_path, errors)
+        _LOGGER.warning("FIT decode errors for %s: %s, skipping", fit_path, errors)
         return None
 
     records = messages.get("record_mesgs", [])
