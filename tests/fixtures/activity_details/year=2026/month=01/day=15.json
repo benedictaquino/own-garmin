@@ -4,9 +4,6 @@
     "measurementCount": 20,
     "metricsCount": 3,
     "totalMetricsCount": 3,
-    "detailsAvailable": true,
-    "pendingData": null,
-    "heartRateDTOs": null,
     "metricDescriptors": [
       {"metricsIndex": 0, "key": "directTimestamp", "unit": {"id": 41, "key": "ms", "factor": 1.0}},
       {"metricsIndex": 1, "key": "sumDuration", "unit": {"id": 40, "key": "second", "factor": 1000.0}},
@@ -45,16 +42,14 @@
     ],
     "geoPolylineDTO": {"polyline": []},
     "heartRateDTOs": null,
-    "pendingData": null
+    "pendingData": null,
+    "detailsAvailable": true
   },
   {
     "activityId": 2002,
     "measurementCount": 2,
     "metricsCount": 4,
     "totalMetricsCount": 4,
-    "detailsAvailable": true,
-    "pendingData": null,
-    "heartRateDTOs": null,
     "metricDescriptors": [
       {"metricsIndex": 0, "key": "directTimestamp", "unit": {"id": 41, "key": "ms", "factor": 1.0}},
       {"metricsIndex": 1, "key": "sumDuration", "unit": {"id": 40, "key": "second", "factor": 1000.0}},
@@ -68,6 +63,7 @@
     ],
     "geoPolylineDTO": null,
     "heartRateDTOs": null,
-    "pendingData": null
+    "pendingData": null,
+    "detailsAvailable": true
   }
 ]
