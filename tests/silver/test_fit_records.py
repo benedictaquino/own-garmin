@@ -1,5 +1,4 @@
 import datetime
-import zipfile
 from pathlib import Path
 
 import duckdb
@@ -29,7 +28,7 @@ def _build_fit_bytes(records: list[dict]) -> bytes:
     return enc.close()
 
 
-def _write_fit_zip(
+def _write_fit_file(
     tmp_path: Path,
     activity_id: int,
     records: list[dict],
@@ -40,8 +39,7 @@ def _write_fit_zip(
     zip_dir = tmp_path / f"bronze/fit/year={year}/month={month}/day={dd}"
     zip_dir.mkdir(parents=True, exist_ok=True)
     zip_path = zip_dir / f"{activity_id}.zip"
-    with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr(f"{activity_id}.fit", fit_bytes)
+    zip_path.write_bytes(fit_bytes)
     return str(zip_path)
 
 
@@ -69,7 +67,7 @@ def set_data_dir(monkeypatch, tmp_path):
 
 def test_transform_extracts_records(tmp_path):
     records = [_make_record(i) for i in range(10)]
-    zip_path = _write_fit_zip(tmp_path, 100, records)
+    zip_path = _write_fit_file(tmp_path, 100, records)
 
     df = fit_records.transform([zip_path])
     assert df.height == 10
@@ -91,7 +89,7 @@ def test_transform_extracts_records(tmp_path):
 
 
 def test_transform_semicircle_conversion(tmp_path):
-    zip_path = _write_fit_zip(tmp_path, 1, [_make_record(0, position_lat=523255203)])
+    zip_path = _write_fit_file(tmp_path, 1, [_make_record(0, position_lat=523255203)])
     df = fit_records.transform([zip_path])
     assert df.item(0, "position_lat") == pytest.approx(43.86, abs=0.01)
 
@@ -99,36 +97,32 @@ def test_transform_semicircle_conversion(tmp_path):
 def test_transform_null_power(tmp_path):
     rec = _make_record(0)
     rec.pop("power")
-    zip_path = _write_fit_zip(tmp_path, 2, [rec])
+    zip_path = _write_fit_file(tmp_path, 2, [rec])
     df = fit_records.transform([zip_path])
     assert df.item(0, "power") is None
     assert df.item(0, "heart_rate") == 120
 
 
-def test_transform_corrupt_zip_skipped(tmp_path, caplog):
+def test_transform_corrupt_fit_skipped(tmp_path, caplog):
     zip_dir = tmp_path / "bronze/fit/year=2026/month=01/day=05"
     zip_dir.mkdir(parents=True, exist_ok=True)
-    bad_zip = zip_dir / "999.zip"
-    bad_zip.write_bytes(b"not a zip file")
+    bad_fit = zip_dir / "999.zip"
+    bad_fit.write_bytes(b"not a fit file")
 
     with caplog.at_level("WARNING"):
-        df = fit_records.transform([str(bad_zip)])
+        df = fit_records.transform([str(bad_fit)])
     assert df.height == 0
     assert any("999" in msg for msg in caplog.messages)
 
 
 def test_transform_dedup_by_activity_timestamp(tmp_path):
     records = [_make_record(0, heart_rate=120), _make_record(0, heart_rate=180)]
-    # two ZIPs for the same activity_id containing overlapping timestamps
-    zip1 = _write_fit_zip(tmp_path, 50, [records[0]])
+    # two FIT files for the same activity_id containing overlapping timestamps
+    zip1 = _write_fit_file(tmp_path, 50, [records[0]])
     # rewrite at a different path but same activity_id — simulate bronze re-ingest
-    zip_dir = tmp_path / "bronze/fit/year=2026/month=02/day=01"
-    zip_dir.mkdir(parents=True, exist_ok=True)
-    zip2 = zip_dir / "50.zip"
-    with zipfile.ZipFile(zip2, "w") as zf:
-        zf.writestr("50.fit", _build_fit_bytes([records[1]]))
+    zip2 = _write_fit_file(tmp_path, 50, [records[1]], day="2026/02/01")
 
-    df = fit_records.transform([zip1, str(zip2)])
+    df = fit_records.transform([zip1, zip2])
     assert df.height == 1
     assert df.item(0, "heart_rate") == 180
 
@@ -142,7 +136,7 @@ def test_transform_empty_returns_typed_frame():
 
 def test_rebuild_writes_partitioned_parquet(tmp_path):
     records = [_make_record(i) for i in range(5)]
-    _write_fit_zip(tmp_path, 42, records)
+    _write_fit_file(tmp_path, 42, records)
 
     count = fit_records.rebuild()
     assert count == 5
@@ -160,7 +154,7 @@ def test_rebuild_no_bronze_returns_zero(tmp_path):
 
 
 def test_rebuild_with_empty_bronze_clears_existing_silver(tmp_path):
-    _write_fit_zip(tmp_path, 7, [_make_record(0)])
+    _write_fit_file(tmp_path, 7, [_make_record(0)])
     assert fit_records.rebuild() == 1
     silver_dir = tmp_path / "silver/fit_records"
     assert list(silver_dir.rglob("*.parquet")), "expected silver parquet seeded"
@@ -189,8 +183,8 @@ def test_rebuild_clears_stale_partitions(tmp_path):
         }
     ]
 
-    jan_zip = Path(_write_fit_zip(tmp_path, 10, jan_records, day="2026/01/05"))
-    feb_zip = Path(_write_fit_zip(tmp_path, 20, feb_records, day="2026/02/10"))
+    jan_zip = Path(_write_fit_file(tmp_path, 10, jan_records, day="2026/01/05"))
+    feb_zip = Path(_write_fit_file(tmp_path, 20, feb_records, day="2026/02/10"))
 
     assert fit_records.rebuild() == 2
 
