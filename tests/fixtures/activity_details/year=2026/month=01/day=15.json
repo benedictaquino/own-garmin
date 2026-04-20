@@ -1,0 +1,73 @@
+[
+  {
+    "activityId": 2001,
+    "measurementCount": 20,
+    "metricsCount": 3,
+    "totalMetricsCount": 3,
+    "detailsAvailable": true,
+    "pendingData": null,
+    "heartRateDTOs": null,
+    "metricDescriptors": [
+      {"metricsIndex": 0, "key": "directTimestamp", "unit": {"id": 41, "key": "ms", "factor": 1.0}},
+      {"metricsIndex": 1, "key": "sumDuration", "unit": {"id": 40, "key": "second", "factor": 1000.0}},
+      {"metricsIndex": 2, "key": "sumElapsedDuration", "unit": {"id": 40, "key": "second", "factor": 1000.0}},
+      {"metricsIndex": 3, "key": "sumMovingDuration", "unit": {"id": 40, "key": "second", "factor": 1000.0}},
+      {"metricsIndex": 4, "key": "sumDistance", "unit": {"id": 51, "key": "meter", "factor": 100.0}},
+      {"metricsIndex": 5, "key": "sumAccumulatedPower", "unit": {"id": 11, "key": "watt", "factor": 1.0}},
+      {"metricsIndex": 6, "key": "directHeartRate", "unit": {"id": 5, "key": "bpm", "factor": 1.0}},
+      {"metricsIndex": 7, "key": "directSpeed", "unit": {"id": 49, "key": "mps", "factor": 1000.0}},
+      {"metricsIndex": 8, "key": "directGradeAdjustedSpeed", "unit": {"id": 49, "key": "mps", "factor": 1000.0}},
+      {"metricsIndex": 9, "key": "directVerticalSpeed", "unit": {"id": 49, "key": "mps", "factor": 1000.0}},
+      {"metricsIndex": 10, "key": "directPower", "unit": {"id": 11, "key": "watt", "factor": 1.0}},
+      {"metricsIndex": 11, "key": "directDoubleCadence", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 12, "key": "directRunCadence", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 13, "key": "directFractionalCadence", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 14, "key": "directStrideLength", "unit": {"id": 7, "key": "cm", "factor": 1.0}},
+      {"metricsIndex": 15, "key": "directVerticalOscillation", "unit": {"id": 7, "key": "cm", "factor": 1.0}},
+      {"metricsIndex": 16, "key": "directVerticalRatio", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 17, "key": "directGroundContactTime", "unit": {"id": 3, "key": "ms", "factor": 1.0}},
+      {"metricsIndex": 18, "key": "directGroundContactBalanceLeft", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 19, "key": "directRespirationRate", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 20, "key": "directBodyBattery", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 21, "key": "directAvailableStamina", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 22, "key": "directPotentialStamina", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 23, "key": "directPerformanceCondition", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 24, "key": "directCaloriesBurnRate", "unit": {"id": 6, "key": "dimensionless", "factor": 1.0}},
+      {"metricsIndex": 25, "key": "directAirTemperature", "unit": {"id": 2, "key": "celsius", "factor": 100.0}},
+      {"metricsIndex": 26, "key": "directElevation", "unit": {"id": 4, "key": "meter", "factor": 100.0}},
+      {"metricsIndex": 27, "key": "directLatitude", "unit": {"id": 60, "key": "dd", "factor": 1.0}},
+      {"metricsIndex": 28, "key": "directLongitude", "unit": {"id": 61, "key": "dd", "factor": 1.0}}
+    ],
+    "activityDetailMetrics": [
+      {"metrics": [1452826800000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 145.0, 3.2, 3.1, -0.1, 250.0, 170.0, 85.0, 0.3, 115.0, 9.5, 8.2, 240.0, 50.8, 18.0, 72.0, 88.0, 95.0, 3.0, 12.5, 5.0, 120.5, 40.7127, -74.0059]},
+      {"metrics": [1452826801000.0, 1.0, 1.0, 1.0, 3.2, 250.0, 147.0, 3.3, 3.2, -0.05, 252.0, 172.0, 86.0, 0.3, 116.0, 9.6, 8.3, 238.0, 50.9, 18.0, 72.0, 87.0, 95.0, 3.0, 12.6, 5.0, 120.5, 40.7128, -74.0058]},
+      {"metrics": [1452826802000.0, 2.0, 2.0, 2.0, 6.5, 502.0, 149.0, 3.4, 3.3, -0.02, 255.0, 174.0, 87.0, 0.4, 117.0, 9.7, 8.4, 236.0, 51.0, 18.5, 71.0, 86.0, 94.0, 3.0, 12.7, 5.0, 120.6, 40.7130, -74.0057]}
+    ],
+    "geoPolylineDTO": {"polyline": []},
+    "heartRateDTOs": null,
+    "pendingData": null
+  },
+  {
+    "activityId": 2002,
+    "measurementCount": 2,
+    "metricsCount": 4,
+    "totalMetricsCount": 4,
+    "detailsAvailable": true,
+    "pendingData": null,
+    "heartRateDTOs": null,
+    "metricDescriptors": [
+      {"metricsIndex": 0, "key": "directTimestamp", "unit": {"id": 41, "key": "ms", "factor": 1.0}},
+      {"metricsIndex": 1, "key": "sumDuration", "unit": {"id": 40, "key": "second", "factor": 1000.0}},
+      {"metricsIndex": 2, "key": "directHeartRate", "unit": {"id": 5, "key": "bpm", "factor": 1.0}}
+    ],
+    "activityDetailMetrics": [
+      {"metrics": [1452826900000.0, 0.0, 120.0]},
+      {"metrics": [1452826901000.0, 1.0, 122.0]},
+      {"metrics": [1452826902000.0, 2.0, 124.0]},
+      {"metrics": [1452826903000.0, 3.0, 126.0]}
+    ],
+    "geoPolylineDTO": null,
+    "heartRateDTOs": null,
+    "pendingData": null
+  }
+]

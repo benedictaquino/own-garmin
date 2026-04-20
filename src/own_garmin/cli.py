@@ -100,11 +100,20 @@ def ingest(
 @app.command()
 @_handle_errors
 def process() -> None:
-    """Rebuild the silver activities parquet from bronze JSON."""
-    from own_garmin.silver import activities
+    """Rebuild all silver datasets from bronze.
+
+    Rebuilds activities, fit_records, and activity_metrics in order.
+    """
+    from own_garmin.silver import activities, activity_metrics, fit_records
 
     n = activities.rebuild()
     typer.echo(f"Silver activities: {n} rows written")
+
+    n = fit_records.rebuild()
+    typer.echo(f"Silver fit_records: {n} rows written")
+
+    n = activity_metrics.rebuild()
+    typer.echo(f"Silver activity_metrics: {n} rows written")
 
 
 @app.command()
